@@ -11,7 +11,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: 'https://ai-tools-ccjkhnsbv-veeresh-h-ps-projects.vercel.app',
   credentials: true,
 }));
 app.use(express.json());
