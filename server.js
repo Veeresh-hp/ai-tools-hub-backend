@@ -10,9 +10,21 @@ dotenv.config();
 const app = express();
 
 // Middleware
+const allowedOrigins = [
+  'https://ai-tools-ccjkhnsbv-veeresh-h-ps-projects.vercel.app',
+  'https://ai-tools-seven-jet.vercel.app',
+  'https://myalltools.vercel.app'// <-- new frontend domain
+];
+
 app.use(cors({
-  origin: 'https://ai-tools-ccjkhnsbv-veeresh-h-ps-projects.vercel.app',
-  credentials: true,
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked from origin: ${origin}`));
+    }
+  },
+  credentials: true
 }));
 app.use(express.json());
 
