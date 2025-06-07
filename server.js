@@ -13,17 +13,19 @@ const allowedOrigins = [
   'https://ai-tools-rj5xk8ao0-veeresh-h-ps-projects.vercel.app',
   'https://ai-alltools.vercel.app',
   'https://myalltools.vercel.app',
+  'https://ai-tools-seven-jet.vercel.app',
   'http://localhost:3000'
 ];
 
 
 // ✅ CORS CONFIGURATION FOR ALL REQUESTS
+
 app.use(cors({
-  origin: function (origin, callback) {
+  origin: function(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`❌ CORS blocked from origin: ${origin}`));
+      callback(null, false);
     }
   },
   credentials: true,
