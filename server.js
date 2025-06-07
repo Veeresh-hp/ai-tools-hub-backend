@@ -10,10 +10,12 @@ const app = express();
 
 // ✅ ALLOWED ORIGINS FOR CORS (NO trailing slashes)
 const allowedOrigins = [
+  'https://ai-tools-rj5xk8ao0-veeresh-h-ps-projects.vercel.app',
   'https://ai-alltools.vercel.app',
   'https://myalltools.vercel.app',
   'http://localhost:3000'
 ];
+
 
 // ✅ CORS CONFIGURATION FOR ALL REQUESTS
 app.use(cors({
