@@ -8,15 +8,27 @@ dotenv.config();
 
 const app = express();
 
-// ✅ ALLOWED ORIGINS FOR CORS
+// ✅ ALLOWED ORIGINS FOR CORS (NO trailing slashes)
 const allowedOrigins = [
-  'https://your-app.vercel.app',
-  'https://myalltools.vercel.app', // ✅ NEW: Your current frontend domain
-  'http://localhost:3000'          // ✅ Local development
+  'https://ai-alltools.vercel.app',
+  'https://myalltools.vercel.app',
+  'http://localhost:3000'
 ];
 
-// ✅ CORS CONFIGURATION
+// ✅ CORS CONFIGURATION FOR ALL REQUESTS
 app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`❌ CORS blocked from origin: ${origin}`));
+    }
+  },
+  credentials: true,
+}));
+
+// ✅ HANDLE PRE-FLIGHT OPTIONS REQUESTS
+app.options('*', cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
