@@ -18,5 +18,7 @@
     "mongodb": "^6.16.0",
     "mongoose": "^8.15.1",
     "nodemailer": "^7.0.3"
-  }
+  },"engines": {
+  "node": "20.x"
+ }
 }
