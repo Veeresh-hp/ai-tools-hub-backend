@@ -10,8 +10,9 @@ const app = express();
 
 // ✅ ALLOWED ORIGINS FOR CORS
 const allowedOrigins = [
-  'https://your-app.vercel.app',             // ✅ Your production frontend
-  'http://localhost:3000'                    // ✅ For local development
+  'https://your-app.vercel.app',
+  'https://myalltools.vercel.app', // ✅ NEW: Your current frontend domain
+  'http://localhost:3000'          // ✅ Local development
 ];
 
 // ✅ CORS CONFIGURATION
@@ -28,10 +29,12 @@ app.use(cors({
 
 app.use(express.json());
 
+// ✅ Default route
 app.get('/', (req, res) => {
   res.send('✅ Backend working!');
 });
 
+// ✅ Auth routes
 app.use('/api/auth', authRoutes);
 
 // ✅ MongoDB connection
@@ -42,6 +45,7 @@ mongoose.connect(process.env.MONGO_URI)
     process.exit(1);
   });
 
+// ✅ Server startup
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
