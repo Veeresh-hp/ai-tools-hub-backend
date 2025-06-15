@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const authRoutes = require('./routes/auth');
+const contactRoutes = require('./routes/contact'); // Add this near other route imports
+
 
 dotenv.config();
 
@@ -52,6 +54,7 @@ app.get('/', (req, res) => {
 
 // ✅ Auth routes
 app.use('/api/auth', authRoutes);
+app.use('/api/contact', contactRoutes); // Add this below app.use('/api/auth', ...)
 
 // ✅ MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
