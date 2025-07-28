@@ -1,38 +1,28 @@
 // routes/contact.js
+
 const express = require('express');
 const router = express.Router();
-const nodemailer = require('nodemailer');
-require('dotenv').config();
+// Import the centralized email functions
+const { sendEmail, emailTemplates } = require('../utils/emailService');
 
 router.post('/', async (req, res) => {
-  console.log('Received body:', req.body); // 🧠 Add this line //
   const { name, email, message } = req.body;
 
-  if (!name || !email || !message)
+  if (!name || !email || !message) {
     return res.status(400).json({ error: 'All fields are required' });
-
-
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  const mailOptions = {
-    from: email,
-    to: process.env.EMAIL_USER,
-    subject: `New Contact Message from ${name}`,
-    text: `From: ${name} <${email}>\n\n${message}`,
-  };
+  }
 
   try {
-    await transporter.sendMail(mailOptions);
-    res.json({ message: 'Email sent successfully!' });
+    // 1. Get the pre-formatted mail options from the template
+    const mailOptions = emailTemplates.contactForm(name, email, message);
+    
+    // 2. Send the email using the generic sender
+    await sendEmail(mailOptions);
+    
+    res.status(200).json({ message: 'Message sent successfully! We will get back to you shortly.' });
   } catch (error) {
-    console.error('Email sending error:', error);
-    res.status(500).json({ error: 'Failed to send email. Try again later.' });
+    console.error('Contact form error:', error);
+    res.status(500).json({ error: 'Failed to send message. Please try again later.' });
   }
 });
 

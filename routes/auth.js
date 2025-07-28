@@ -4,7 +4,8 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { sendResetEmail } = require('../utils/email');
+// 1. Import from the new, correct email service file
+const { sendEmail, emailTemplates } = require('../utils/emailService');
 
 // Signup
 router.post('/signup', async (req, res) => {
@@ -87,7 +88,9 @@ router.post('/forgot-password', async (req, res) => {
 
     console.log('🔑 Reset token:', token);
 
-    await sendResetEmail(email, token);
+    // 2. Use the new email template system
+    const mailOptions = emailTemplates.passwordReset(user.email, token);
+    await sendEmail(mailOptions);
 
     res.json({ message: 'Password reset email sent! Check your inbox 😎' });
   } catch (error) {
