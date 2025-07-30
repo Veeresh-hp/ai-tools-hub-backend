@@ -1,26 +1,33 @@
 const express = require('express');
 const router = express.Router();
-const Subscriber = require('../models/Subscriber');
-const { sendEmail, emailTemplates } = require('../utils/emailService');
+const nodemailer = require('nodemailer');
+const { welcome } = require('../utils/emailService');
 
-// Subscribe API
-router.post('/', async (req, res) => {
+router.post('/subscribe', async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ message: 'Email is required.' });
+
+  // Create transporter
+  const transporter = nodemailer.createTransport({
+    service: 'Gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+
+  // Define mail options using the template
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: 'Welcome to AI Tools Hub 🚀',
+    html: welcome(email)
+  };
 
   try {
-    const existing = await Subscriber.findOne({ email });
-    if (existing) return res.status(409).json({ message: 'Already subscribed.' });
-
-    const subscriber = new Subscriber({ email });
-    await subscriber.save();
-
-    await sendEmail(emailTemplates.welcome(email));
-    res.status(200).json({ message: 'Successfully subscribed!' });
-  } catch (err) {
-    console.error('Subscribe error:', err.message);
-    res.status(500).json({ message: 'Subscription failed.' });
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ message: 'Welcome email sent successfully!' });
+  } catch (error) {
+    console.error('Email send error:', error);
+    res.status(500).json({ message: 'Failed to send welcome email.' });
   }
 });
-
-module.exports = router;

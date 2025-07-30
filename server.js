@@ -21,6 +21,13 @@ const allowedOrigins = [
   'https://ai-tools-seven-jet.vercel.app',
   'http://localhost:3000'
 ];
+// ✅ Built-in body parser must come before any routes using req.body
+app.use(express.json());
+
+// ✅ Middleware to log requests
+const toolRoutes = require('./routes/tools');
+app.use('/api/tools', toolRoutes);
+
 
 // ✅ CORS CONFIGURATION FOR ALL REQUESTS
 app.use(cors({
@@ -45,7 +52,6 @@ app.options('*', cors({
   credentials: true,
 }));
 
-app.use(express.json());
 
 // ✅ Default route
 app.get('/', (req, res) => {
