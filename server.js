@@ -2,11 +2,9 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
-
-// Import existing routes
 const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contact');
-const subscribeRoutes = require('./routes/subscribe'); // ✨ New line
+const newsletterRoutes = require('./routes/newsletter'); // Add this line
 
 dotenv.config();
 
@@ -21,20 +19,19 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 
-
 // ✅ CORS CONFIGURATION FOR ALL REQUESTS
 app.use(cors({
   origin: function(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`CORS blocked request from origin: ${origin}`));
+      callback(null, false);
     }
   },
   credentials: true,
 }));
 
-// ✅ HANDLE PRE-FLIGHT OPTIONS REQUESTS (Optional but good practice)
+// ✅ HANDLE PRE-FLIGHT OPTIONS REQUESTS
 app.options('*', cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -53,10 +50,10 @@ app.get('/', (req, res) => {
   res.send('✅ Backend working!');
 });
 
-// ✅ API routes
+// ✅ All routes
 app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
-app.use('/api/subscribe', subscribeRoutes); // ✨ New line
+app.use('/api/newsletter', newsletterRoutes); // Add this line
 
 // ✅ MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
