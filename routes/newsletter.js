@@ -1,7 +1,7 @@
 // routes/newsletter.js
 const express = require('express');
 const router = express.Router();
-const Subscriber = require('../models/Subscriber');
+const Subscriber = require('../models/Subscriber'); // ✅ correct path
 const { sendEmail, emailTemplates } = require('../utils/emailService');
 
 // Subscribe to newsletter

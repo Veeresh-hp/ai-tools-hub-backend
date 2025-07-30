@@ -20,7 +20,6 @@ const subscriberSchema = new mongoose.Schema({
   },
 });
 
-// Add index for better performance
-subscriberSchema.index({ email: 1 });
+// ❌ Removed duplicate .index() — not needed since `unique: true` on `email`
 
 module.exports = mongoose.model('Subscriber', subscriberSchema);

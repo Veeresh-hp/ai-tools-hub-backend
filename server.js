@@ -4,11 +4,14 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contact');
-const newsletterRoutes = require('./routes/newsletter'); // Add this line
+const newsletterRoutes = require('./routes/newsletter');
 
 dotenv.config();
 
 const app = express();
+
+// ✅ Fix for Express behind proxy (e.g. Render)
+app.set('trust proxy', 1);
 
 // ✅ ALLOWED ORIGINS FOR CORS (NO trailing slashes)
 const allowedOrigins = [
@@ -31,7 +34,6 @@ app.use(cors({
   credentials: true,
 }));
 
-// ✅ HANDLE PRE-FLIGHT OPTIONS REQUESTS
 app.options('*', cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -50,10 +52,10 @@ app.get('/', (req, res) => {
   res.send('✅ Backend working!');
 });
 
-// ✅ All routes
+// ✅ Route handlers
 app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
-app.use('/api/newsletter', newsletterRoutes); // Add this line
+app.use('/api/newsletter', newsletterRoutes);
 
 // ✅ MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
@@ -63,7 +65,7 @@ mongoose.connect(process.env.MONGO_URI)
     process.exit(1);
   });
 
-// ✅ Server startup
+// ✅ Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
