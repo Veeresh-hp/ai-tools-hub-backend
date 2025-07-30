@@ -2,9 +2,11 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+
 const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contact');
 const newsletterRoutes = require('./routes/newsletter');
+const toolRoutes = require('./routes/tools');
 
 dotenv.config();
 
@@ -21,28 +23,10 @@ const allowedOrigins = [
   'https://ai-tools-seven-jet.vercel.app',
   'http://localhost:3000'
 ];
-// ✅ Built-in body parser must come before any routes using req.body
-app.use(express.json());
 
-// ✅ Middleware to log requests
-const toolRoutes = require('./routes/tools');
-app.use('/api/tools', toolRoutes);
-
-
-// ✅ CORS CONFIGURATION FOR ALL REQUESTS
+// ✅ CORS middleware — apply this FIRST
 app.use(cors({
   origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(null, false);
-    }
-  },
-  credentials: true,
-}));
-
-app.options('*', cors({
-  origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -52,16 +36,31 @@ app.options('*', cors({
   credentials: true,
 }));
 
+// ✅ Handle OPTIONS (preflight) requests globally
+app.options('*', cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`❌ CORS preflight blocked from origin: ${origin}`));
+    }
+  },
+  credentials: true,
+}));
+
+// ✅ Built-in body parser must come after CORS
+app.use(express.json());
+
+// ✅ Route handlers (after middleware)
+app.use('/api/tools', toolRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/newsletter', newsletterRoutes);
 
 // ✅ Default route
 app.get('/', (req, res) => {
   res.send('✅ Backend working!');
 });
-
-// ✅ Route handlers
-app.use('/api/auth', authRoutes);
-app.use('/api/contact', contactRoutes);
-app.use('/api/newsletter', newsletterRoutes);
 
 // ✅ MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
