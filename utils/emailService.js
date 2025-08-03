@@ -1,37 +1,69 @@
 const nodemailer = require('nodemailer');
 
-// Email template
-const newToolTemplate = ({ name, description, link }) => `
-  <div style="font-family: sans-serif;">
-    <h2>🆕 New AI Tool: ${name}</h2>
-    <p>${description}</p>
-    <a href="${link}" target="_blank" style="display: inline-block; margin-top: 10px; padding: 10px 15px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 5px;">Try Now</a>
-  </div>
-`;
-
-// Reusable email sending function
-const sendNewToolEmail = async (tool, subscribers) => {
-  const transporter = nodemailer.createTransport({
+/**
+ * Creates a reusable transporter object using the default SMTP transport
+ */
+const createTransporter = () => {
+  // IMPORTANT: Use a Gmail "App Password" if you're using a Gmail account.
+  // Google has deprecated the use of less secure apps.
+  return nodemailer.createTransport({
     service: 'Gmail',
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
+      user: process.env.EMAIL_USER, // Your email address from .env
+      pass: process.env.EMAIL_PASS, // Your email App Password from .env
+    },
   });
+};
 
-  for (const subscriber of subscribers) {
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: subscriber.email,
-      subject: `New AI Tool: ${tool.name}`,
-      html: newToolTemplate(tool)
-    };
-
-    await transporter.sendMail(mailOptions);
+/**
+ * Sends an email using the pre-configured transporter.
+ * @param {object} mailOptions - The mail options object (from, to, subject, html).
+ */
+const sendEmail = async (mailOptions) => {
+  try {
+    const transporter = createTransporter();
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully:', info.response);
+  } catch (error) {
+    console.error('❌ Error sending email:', error.message);
+    // Re-throw the error to be caught by the calling function
+    throw new Error('Failed to send email.');
   }
 };
 
-module.exports = {
-  newToolTemplate,
-  sendNewToolEmail
+/**
+ * Contains templates for different types of emails.
+ */
+const emailTemplates = {
+  /**
+   * Generates the mail options for a password reset email.
+   * @param {string} recipientEmail - The email address of the recipient.
+   * @param {string} token - The raw password reset token.
+   * @returns {object} - The mailOptions object for Nodemailer.
+   */
+  passwordReset: (recipientEmail, token) => {
+    // Construct the reset URL using your frontend's URL from .env
+    const resetURL = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+
+    return {
+      from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
+      to: recipientEmail,
+      subject: 'Your Password Reset Request',
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+          <h2 style="text-align: center; color: #0056b3;">Password Reset Request</h2>
+          <p>You are receiving this email because you (or someone else) have requested to reset the password for your account.</p>
+          <p>Please click on the button below to choose a new password. This link is only valid for 10 minutes.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetURL}" target="_blank" style="background-color: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-size: 16px;">Reset Password</a>
+          </div>
+          <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
+          <hr style="border: none; border-top: 1px solid #eee;" />
+          <p style="font-size: 0.9em; color: #777;">AI Tools Hub</p>
+        </div>
+      `,
+    };
+  },
 };
+
+module.exports = { sendEmail, emailTemplates };
