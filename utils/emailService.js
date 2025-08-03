@@ -39,7 +39,7 @@ const emailTemplates = {
    */
   passwordReset: (recipientEmail, token) => {
     const resetURL = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-    const logoURL = `${process.env.FRONTEND_URL}/logo.png`; // Corrected filename
+    const logoURL = `${process.env.FRONTEND_URL}/log.png`; 
 
     return {
       from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
@@ -65,10 +65,10 @@ const emailTemplates = {
   },
 
   /**
-   * ✅ NEW: Generates the mail options for a welcome email.
+   * Generates the mail options for a welcome email.
    */
   welcome: (recipientEmail, username) => {
-    const logoURL = `${process.env.FRONTEND_URL}/logo.png`; // Corrected filename
+    const logoURL = `${process.env.FRONTEND_URL}/log.png`;
     const loginURL = `${process.env.FRONTEND_URL}/login`;
 
     return {
@@ -89,6 +89,35 @@ const emailTemplates = {
           <p>If you have any questions, feel free to reply to this email.</p>
           <hr style="border: none; border-top: 1px solid #eee;" />
           <p style="font-size: 0.9em; color: #777;">Happy exploring!</p>
+          <p style="font-size: 0.9em; color: #777;">The AI Tools Hub Team</p>
+        </div>
+      `,
+    };
+  },
+  
+  /**
+   * ✅ NEW: Generates the mail options for a password reset confirmation.
+   */
+  resetSuccess: (recipientEmail, username) => {
+    const logoURL = `${process.env.FRONTEND_URL}/log.png`;
+    const loginURL = `${process.env.FRONTEND_URL}/login`;
+
+    return {
+      from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
+      to: recipientEmail,
+      subject: 'Your Password Has Been Changed Successfully',
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="${logoURL}" alt="AI Tools Hub Logo" style="max-width: 150px; height: auto;" />
+          </div>
+          <h2 style="text-align: center; color: #0056b3;">Password Successfully Reset</h2>
+          <p>Hello ${username},</p>
+          <p>This is a confirmation that the password for your account has just been changed. If you did not make this change, please contact our support team immediately.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${loginURL}" target="_blank" style="background-color: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-size: 16px;">Login to Your Account</a>
+          </div>
+          <hr style="border: none; border-top: 1px solid #eee;" />
           <p style="font-size: 0.9em; color: #777;">The AI Tools Hub Team</p>
         </div>
       `,

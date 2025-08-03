@@ -26,6 +26,16 @@ router.post('/signup', async (req, res) => {
 
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
+    // ✅ Send welcome email after successful signup
+    try {
+      const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
+      await sendEmail(welcomeMailOptions);
+      console.log('✅ Welcome email sent to:', user.email);
+    } catch (emailError) {
+      console.error('❌ Failed to send welcome email:', emailError.message);
+      // Don't fail the signup process if email fails
+    }
+
     res.status(201).json({
       token,
       user: { email: user.email, username: user.username },
@@ -93,8 +103,14 @@ router.post('/forgot-password', async (req, res) => {
     await user.save();
 
     // 4. Send the email with the *raw* token
-    const mailOptions = emailTemplates.passwordReset(user.email, resetToken);
-    sendEmail(mailOptions);
+    try {
+      const mailOptions = emailTemplates.passwordReset(user.email, resetToken);
+      await sendEmail(mailOptions);
+      console.log('✅ Password reset email sent to:', user.email);
+    } catch (emailError) {
+      console.error('❌ Failed to send password reset email:', emailError.message);
+      // Continue with success response even if email fails
+    }
 
     res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
 
@@ -141,6 +157,16 @@ router.post('/reset-password', async (req, res) => {
 
         await user.save();
 
+        // ✅ Send password reset success confirmation email
+        try {
+            const resetSuccessMailOptions = emailTemplates.resetSuccess(user.email, user.username);
+            await sendEmail(resetSuccessMailOptions);
+            console.log('✅ Password reset success email sent to:', user.email);
+        } catch (emailError) {
+            console.error('❌ Failed to send reset success email:', emailError.message);
+            // Don't fail the reset process if email fails
+        }
+
         // Optional: Log the user in immediately by sending a new JWT token
         const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
@@ -156,6 +182,4 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-
 module.exports = router;
-
