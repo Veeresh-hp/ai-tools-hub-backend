@@ -44,6 +44,9 @@ const emailTemplates = {
   passwordReset: (recipientEmail, token) => {
     // Construct the reset URL using your frontend's URL from .env
     const resetURL = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+    
+    // ✅ FIX: Define the logoURL variable here
+    const logoURL = `${process.env.FRONTEND_URL}/logo.png`; // Adjust the path to your logo as needed
 
     return {
       from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
@@ -51,6 +54,9 @@ const emailTemplates = {
       subject: 'Your Password Reset Request',
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="${logoURL}" alt="AI Tools Hub Logo" style="max-width: 150px; height: auto;" />
+          </div>
           <h2 style="text-align: center; color: #0056b3;">Password Reset Request</h2>
           <p>You are receiving this email because you (or someone else) have requested to reset the password for your account.</p>
           <p>Please click on the button below to choose a new password. This link is only valid for 10 minutes.</p>
