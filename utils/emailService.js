@@ -5,7 +5,6 @@ const nodemailer = require('nodemailer');
  */
 const createTransporter = () => {
   // IMPORTANT: Use a Gmail "App Password" if you're using a Gmail account.
-  // Google has deprecated the use of less secure apps.
   return nodemailer.createTransport({
     service: 'Gmail',
     auth: {
@@ -37,16 +36,10 @@ const sendEmail = async (mailOptions) => {
 const emailTemplates = {
   /**
    * Generates the mail options for a password reset email.
-   * @param {string} recipientEmail - The email address of the recipient.
-   * @param {string} token - The raw password reset token.
-   * @returns {object} - The mailOptions object for Nodemailer.
    */
   passwordReset: (recipientEmail, token) => {
-    // Construct the reset URL using your frontend's URL from .env
     const resetURL = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-    
-    // ✅ FIX: Define the logoURL variable here
-    const logoURL = `${process.env.FRONTEND_URL}/logo.png`; // Adjust the path to your logo as needed
+    const logoURL = `${process.env.FRONTEND_URL}/logo.png`; // Corrected filename
 
     return {
       from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
@@ -66,6 +59,37 @@ const emailTemplates = {
           <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
           <hr style="border: none; border-top: 1px solid #eee;" />
           <p style="font-size: 0.9em; color: #777;">AI Tools Hub</p>
+        </div>
+      `,
+    };
+  },
+
+  /**
+   * ✅ NEW: Generates the mail options for a welcome email.
+   */
+  welcome: (recipientEmail, username) => {
+    const logoURL = `${process.env.FRONTEND_URL}/logo.png`; // Corrected filename
+    const loginURL = `${process.env.FRONTEND_URL}/login`;
+
+    return {
+      from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
+      to: recipientEmail,
+      subject: 'Welcome to AI Tools Hub! 🎉',
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="${logoURL}" alt="AI Tools Hub Logo" style="max-width: 150px; height: auto;" />
+          </div>
+          <h2 style="text-align: center; color: #28a745;">Welcome, ${username}!</h2>
+          <p>Thank you for joining AI Tools Hub! We're excited to have you on board.</p>
+          <p>You can now explore a universe of powerful AI tools, save your favorites, and stay ahead of the curve. To get started, simply log in to your new account:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${loginURL}" target="_blank" style="background-color: #28a745; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-size: 16px;">Go to Login</a>
+          </div>
+          <p>If you have any questions, feel free to reply to this email.</p>
+          <hr style="border: none; border-top: 1px solid #eee;" />
+          <p style="font-size: 0.9em; color: #777;">Happy exploring!</p>
+          <p style="font-size: 0.9em; color: #777;">The AI Tools Hub Team</p>
         </div>
       `,
     };
