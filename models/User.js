@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Email is required'],
     unique: true,
-    trim: true, // Removes whitespace from both ends
+    trim: true,
     lowercase: true,
     match: [/\S+@\S+\.\S+/, 'is invalid'],
   },
@@ -14,33 +14,27 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Username is required'],
     unique: true,
-    trim: true, // Removes whitespace from both ends
+    trim: true,
     lowercase: true,
     minlength: 3,
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
-    minlength: 6,
+    minlength: 6, // No longer required
   },
-  // Fields for password reset
-  passwordResetToken: {
+  googleId: {
     type: String,
+    unique: true,
+    sparse: true, // Important for optional unique field
   },
-  passwordResetExpires: {
-    type: Date,
-  },
-}, { 
-  // Mongoose's built-in way to add createdAt and updatedAt fields
-  timestamps: true 
-});
+  passwordResetToken: String,
+  passwordResetExpires: Date,
+}, { timestamps: true });
 
-// --- MIDDLEWARE ---
-
-// Hash password before saving the user
+// Hash password before saving, but only if it exists and has been modified
 userSchema.pre('save', async function (next) {
-  // Only run this function if password was actually modified
-  if (!this.isModified('password')) return next();
+  // Only run this function if password was actually modified (or is new) and exists
+  if (!this.isModified('password') || !this.password) return next();
 
   // Hash the password with a salt round of 12
   const salt = await bcrypt.genSalt(12);
@@ -48,19 +42,11 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
-
-// --- INSTANCE METHODS ---
-
-/**
- * Compares a candidate password with the user's hashed password.
- * @param {string} candidatePassword The password to compare.
- * @returns {Promise<boolean>} True if the passwords match, false otherwise.
- */
+// Instance method to compare passwords
 userSchema.methods.comparePassword = async function (candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+  // If the user signed up with Google, they won't have a password
+  if (!this.password) return false;
+  return bcrypt.compare(candidatePassword, this.password);
 };
 
-
-const User = mongoose.model('User', userSchema);
-
-module.exports = User;
+module.exports = mongoose.model('User', userSchema);
