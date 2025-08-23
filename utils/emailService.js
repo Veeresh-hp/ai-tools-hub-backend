@@ -1,15 +1,22 @@
+/* File: utils/emailService.js 
+  Description: A centralized service for sending emails using Nodemailer, with pre-defined templates.
+*/
+
 const nodemailer = require('nodemailer');
 
 /**
- * Creates a reusable transporter object using the default SMTP transport
+ * Creates a reusable transporter object using SMTP transport.
+ * This should be configured with your email provider's details.
+ * @returns {object} A Nodemailer transporter object.
  */
 const createTransporter = () => {
-  // IMPORTANT: Use a Gmail "App Password" if you're using a Gmail account.
+  // IMPORTANT: For production, use a dedicated email service (e.g., SendGrid, Mailgun).
+  // For Gmail, you must use an "App Password" if 2-Step Verification is enabled.
   return nodemailer.createTransport({
-    service: 'Gmail',
+    service: 'Gmail', // Or your email provider
     auth: {
-      user: process.env.EMAIL_USER, // Your email address from .env
-      pass: process.env.EMAIL_PASS, // Your email App Password from .env
+      user: process.env.EMAIL_USER, // Your email address from .env file
+      pass: process.env.EMAIL_PASS, // Your email app password from .env file
     },
   });
 };
@@ -25,21 +32,25 @@ const sendEmail = async (mailOptions) => {
     console.log('✅ Email sent successfully:', info.response);
   } catch (error) {
     console.error('❌ Error sending email:', error.message);
-    // Re-throw the error to be caught by the calling function
+    // Re-throw the error so the calling function can handle it if needed
     throw new Error('Failed to send email.');
   }
 };
 
 /**
- * Contains templates for different types of emails.
+ * An object containing functions that generate email templates.
+ * This keeps the email content separate from the application logic.
  */
 const emailTemplates = {
   /**
    * Generates the mail options for a password reset email.
+   * @param {string} recipientEmail - The recipient's email address.
+   * @param {string} token - The raw password reset token.
+   * @returns {object} Mail options for Nodemailer.
    */
   passwordReset: (recipientEmail, token) => {
     const resetURL = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-    const logoURL = `${process.env.FRONTEND_URL}/log.png`; 
+    const logoURL = `${process.env.FRONTEND_URL}/log.png`; // Example logo URL
 
     return {
       from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
@@ -66,6 +77,9 @@ const emailTemplates = {
 
   /**
    * Generates the mail options for a welcome email.
+   * @param {string} recipientEmail - The recipient's email address.
+   * @param {string} username - The recipient's username.
+   * @returns {object} Mail options for Nodemailer.
    */
   welcome: (recipientEmail, username) => {
     const logoURL = `${process.env.FRONTEND_URL}/log.png`;
@@ -96,7 +110,10 @@ const emailTemplates = {
   },
   
   /**
-   * ✅ NEW: Generates the mail options for a password reset confirmation.
+   * Generates the mail options for a password reset confirmation email.
+   * @param {string} recipientEmail - The recipient's email address.
+   * @param {string} username - The recipient's username.
+   * @returns {object} Mail options for Nodemailer.
    */
   resetSuccess: (recipientEmail, username) => {
     const logoURL = `${process.env.FRONTEND_URL}/log.png`;

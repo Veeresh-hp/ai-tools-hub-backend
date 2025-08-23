@@ -1,3 +1,8 @@
+/* File: routes/auth.js 
+  Description: Handles all authentication-related routes including signup, login, 
+               password reset, and Google OAuth.
+*/
+
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
@@ -5,41 +10,46 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendEmail, emailTemplates } = require('../utils/emailService');
-const { OAuth2Client } = require('google-auth-library'); // Added for Google Auth
+const { OAuth2Client } = require('google-auth-library');
 
-// Initialize Google Auth Client
+// Initialize Google Auth Client with the ID from environment variables
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// --- SIGNUP ---
+// --- STANDARD USER SIGNUP ---
 router.post('/signup', async (req, res) => {
   const { email, username, password } = req.body;
   try {
+    // Basic validation
     if (!email || !username || !password) {
       return res.status(400).json({ error: 'Please provide email, username, and password' });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
+    // Check for existing user with the same email or username
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       return res.status(400).json({ error: 'Email or username already exists' });
     }
 
+    // Create and save the new user
     const user = new User({ email, username, password });
     await user.save();
 
+    // Create a session token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    // ✅ Send welcome email after successful signup
+    // Send a welcome email
     try {
       const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
       await sendEmail(welcomeMailOptions);
       console.log('✅ Welcome email sent to:', user.email);
     } catch (emailError) {
       console.error('❌ Failed to send welcome email:', emailError.message);
-      // Don't fail the signup process if email fails
+      // Note: The signup process doesn't fail if the email fails to send.
     }
 
+    // Return the token and user info
     res.status(201).json({
       token,
       user: { email: user.email, username: user.username },
@@ -50,29 +60,32 @@ router.post('/signup', async (req, res) => {
   }
 });
 
-// --- LOGIN ---
+// --- STANDARD USER LOGIN ---
 router.post('/login', async (req, res) => {
-  const { identifier, password } = req.body;
+  const { identifier, password } = req.body; // 'identifier' can be email or username
   try {
     if (!identifier || !password) {
       return res.status(400).json({ error: 'Please provide username/email and password' });
     }
 
+    // Find the user by email or username
     const user = await User.findOne({ $or: [{ email: identifier }, { username: identifier }] });
     if (!user) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
     
-    // Check if user has a password (they might be a Google-only user)
+    // Prevent Google users from logging in with a password
     if (!user.password) {
-        return res.status(400).json({ error: 'Invalid credentials' });
+        return res.status(400).json({ error: 'Invalid credentials. You may have signed up with Google.' });
     }
 
+    // Compare the provided password with the stored hash
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
+    // Create a session token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
     res.json({
@@ -91,31 +104,33 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const user = await User.findOne({ email });
 
+    // For security, send a generic success message even if the user doesn't exist
     if (!user) {
-      // IMPORTANT: For security, always send a generic success message
       return res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
     }
     
-    // Do not allow password reset for Google-only accounts
+    // Prevent password reset for Google-only accounts
     if (!user.password) {
         return res.status(400).json({ error: 'Cannot reset password for an account created with Google. Please log in with Google.' });
     }
 
+    // Generate a secure reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.passwordResetToken = crypto
       .createHash('sha256')
       .update(resetToken)
       .digest('hex');
-    user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // Token expires in 10 minutes
     await user.save();
 
+    // Send the password reset email
     try {
       const mailOptions = emailTemplates.passwordReset(user.email, resetToken);
       await sendEmail(mailOptions);
       console.log('✅ Password reset email sent to:', user.email);
     } catch (emailError) {
       console.error('❌ Failed to send password reset email:', emailError.message);
-      // Clear token if email fails to prevent having an unusable token
+      // Clear the token if the email fails to send
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save();
@@ -141,25 +156,29 @@ router.post('/reset-password', async (req, res) => {
             return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
         }
 
+        // Hash the incoming token to compare with the one stored in the database
         const hashedToken = crypto
             .createHash('sha256')
             .update(token)
             .digest('hex');
 
+        // Find the user with a valid, non-expired token
         const user = await User.findOne({
             passwordResetToken: hashedToken,
-            passwordResetExpires: { $gt: Date.now() }
+            passwordResetExpires: { $gt: Date.now() } // Check if the token has not expired
         });
 
         if (!user) {
             return res.status(400).json({ error: 'Password reset token is invalid or has expired.' });
         }
 
+        // Update the user's password and clear the reset token fields
         user.password = password;
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         await user.save();
 
+        // Send a confirmation email that the password was changed
         try {
             const resetSuccessMailOptions = emailTemplates.resetSuccess(user.email, user.username);
             await sendEmail(resetSuccessMailOptions);
@@ -168,6 +187,7 @@ router.post('/reset-password', async (req, res) => {
             console.error('❌ Failed to send reset success email:', emailError.message);
         }
 
+        // Log the user in immediately by providing a new session token
         const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
         res.json({ 
@@ -182,41 +202,43 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// --- GOOGLE LOGIN (token-based GIS) ---
+// --- GOOGLE LOGIN (using token from Google Identity Services) ---
 router.post('/google-login', async (req, res) => {
   try {
-    const { token } = req.body; // ID token from frontend Google button
+    const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Google token missing' });
 
+    // Verify the token with Google's servers
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    // sub = Google unique user ID
     const { sub: googleId, email, name, email_verified } = payload;
 
+    // Ensure the email is verified by Google
     if (!email_verified) {
       return res.status(400).json({ error: 'Google email not verified' });
     }
 
-    // Try to find by email first (handles users who signed up with password earlier)
     let user = await User.findOne({ email });
+    let isNewUser = false; // Flag to track if a new user is created
 
     if (user) {
-      // If user exists but doesn't have a googleId, link the account
+      // If a user with this email exists but doesn't have a googleId, link the account
       if (!user.googleId) {
         user.googleId = googleId;
         await user.save();
       }
     } else {
-      // If user doesn't exist, create a new one
-      // Create a unique username from email or name
+      // If the user doesn't exist, create a new one
+      isNewUser = true;
+      // Generate a unique username from the Google name or email
       const base = (name?.replace(/\W/g, '') || email.split('@')[0]).toLowerCase();
       let username = base;
       let exists = await User.exists({ username });
-      // Loop to find a unique username
+      // Ensure username is unique by appending random numbers if necessary
       while (exists) {
         username = `${base}${Math.floor(Math.random() * 10000)}`;
         exists = await User.exists({ username });
@@ -226,26 +248,35 @@ router.post('/google-login', async (req, res) => {
         email,
         username,
         googleId,
-        // no password for Google users
+        // No password is set for Google-based users
       });
+
+      // Send a welcome email to the new user
+      try {
+        const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
+        await sendEmail(welcomeMailOptions);
+        console.log('✅ Welcome email sent to new Google user:', user.email);
+      } catch (emailError) {
+        console.error('❌ Failed to send welcome email to Google user:', emailError.message);
+      }
     }
 
-    // Create a JWT token for the session
+    // Create a session token for the user
     const jwtToken = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' } // keep same as your email/password flow
+      { expiresIn: '1h' }
     );
 
     res.json({
       token: jwtToken,
       user: { email: user.email, username: user.username },
+      isNewUser: isNewUser // Optionally inform the frontend if it's a new user
     });
   } catch (err) {
     console.error('Google login error:', err);
     res.status(500).json({ error: 'Google login failed' });
   }
 });
-
 
 module.exports = router;
