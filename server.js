@@ -38,10 +38,16 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 
-// ✅ CORS middleware — apply this FIRST
+// ✅ CORS middleware — apply this FIRST (with wildcard for Vercel preview URLs)
 app.use(cors({
   origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    // Allow all Vercel preview URLs from your project
+    const isVercelPreview = origin.match(/^https:\/\/ai-tools-[a-z0-9]+-veeresh-h-ps-projects\.vercel\.app$/);
+    if (allowedOrigins.includes(origin) || isVercelPreview) {
       callback(null, true);
     } else {
       callback(new Error(`❌ CORS blocked from origin: ${origin}`));
