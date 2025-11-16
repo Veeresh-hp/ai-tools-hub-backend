@@ -90,8 +90,6 @@ app.get('/', (req, res) => {
 
 // ✅ MongoDB connection with retry logic
 mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
   maxPoolSize: 10,
   serverSelectionTimeoutMS: 10000,
   socketTimeoutMS: 45000,
@@ -105,8 +103,6 @@ mongoose.connect(process.env.MONGO_URI, {
     console.error('📝 Retrying connection in 10 seconds...');
     setTimeout(() => {
       mongoose.connect(process.env.MONGO_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
       }).catch(retryErr => {
