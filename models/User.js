@@ -18,6 +18,11 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     minlength: 3,
   },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user',
+  },
   password: {
     type: String,
     minlength: 6, // No longer required
@@ -29,6 +34,10 @@ const userSchema = new mongoose.Schema({
   },
   passwordResetToken: String,
   passwordResetExpires: Date,
+  favorites: {
+    type: [String],
+    default: [],
+  },
 }, { timestamps: true });
 
 // Hash password before saving, but only if it exists and has been modified

@@ -1,18 +1,181 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const Tool = require('../models/Tool');
 const Subscriber = require('../models/Subscriber');
 const { sendNewToolEmail } = require('../utils/emailService');
+const User = require('../models/User');
+const { registerTool } = require('../utils/announcementQueue');
+const { auth, requireAdmin } = require('../middleware/auth');
 
-// Route to add a new tool and notify subscribers
-router.post('/add-tool', async (req, res) => {
+// Multer setup for snapshot uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, '..', 'uploads'));
+  },
+  filename: function (req, file, cb) {
+    const unique = `${Date.now()}-${Math.round(Math.random()*1e9)}${path.extname(file.originalname)}`;
+    cb(null, unique);
+  }
+});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
+
+// POST /api/tools/upload - upload snapshot image (no auth required - open to everyone)
+router.post('/upload', upload.single('snapshot'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const fileUrl = `/uploads/${req.file.filename}`; // served statically by server
+    res.json({ url: fileUrl });
+  } catch (err) {
+    console.error('Upload error:', err.message);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+// POST /api/tools/submit - submit new tool (open to everyone, auth optional)
+router.post('/submit', async (req, res) => {
+  try {
+    const { name, description, url, category, snapshotUrl, submitterEmail } = req.body;
+    if (!name || !description) return res.status(400).json({ error: 'Name and description are required' });
+    if (!category) return res.status(400).json({ error: 'Category is required' });
+
+    // Check if user is authenticated from header (optional)
+    let submittedBy = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const jwt = require('jsonwebtoken');
+        const payload = jwt.verify(token, process.env.JWT_SECRET);
+        const User = require('../models/User');
+        const user = await User.findById(payload.userId);
+        if (user) submittedBy = user._id;
+      } catch (err) {
+        // Token invalid or expired - ignore and continue as anonymous
+        console.log('Token verification failed, submitting as anonymous');
+      }
+    }
+
+    const tool = await Tool.create({
+      name,
+      description,
+      url,
+      category,
+      snapshotUrl,
+      submittedBy, // can be null for anonymous submissions
+      status: 'pending'
+    });
+
+    res.status(201).json({ message: 'Tool submitted and pending admin approval', tool });
+  } catch (err) {
+    console.error('Submit tool error:', err.message);
+    res.status(500).json({ error: 'Failed to submit tool' });
+  }
+});
+
+// GET /api/tools/pending - list pending tools (admin only)
+router.get('/pending', auth, requireAdmin, async (req, res) => {
+  try {
+    const pending = await Tool.find({ status: 'pending' }).populate('submittedBy', 'username email');
+    res.json({ tools: pending });
+  } catch (err) {
+    console.error('Get pending tools error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch pending tools' });
+  }
+});
+
+// GET /api/tools/approved - get all approved tools (public - no auth required)
+// MUST be before /:id routes to avoid conflict
+router.get('/approved', async (req, res) => {
+  try {
+    const approved = await Tool.find({ status: 'approved' })
+      .populate('submittedBy', 'username')
+      .sort({ createdAt: -1 }); // newest first
+    res.json({ tools: approved });
+  } catch (err) {
+    console.error('Get approved tools error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch approved tools' });
+  }
+});
+
+// POST /api/tools/:id/approve - approve a tool (admin only)
+router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
+  try {
+    const tool = await Tool.findById(req.params.id);
+    if (!tool) return res.status(404).json({ error: 'Tool not found' });
+    tool.status = 'approved';
+    await tool.save();
+
+    // Either enqueue for digest or send immediately
+    try {
+      if ((process.env.BATCH_SEND_ENABLED || 'true').toLowerCase() === 'true') {
+        registerTool({ name: tool.name, description: tool.description, url: tool.url });
+      } else {
+        const [subscribers, users] = await Promise.all([
+          Subscriber.find({}, 'email unsubscribeToken isUnsubscribed lastSentAt'),
+          User.find({}, 'email')
+        ]);
+        const userEmailSet = new Set(users.map(u => u.email));
+        const targetSubscribers = subscribers.filter(s => !userEmailSet.has(s.email));
+        const recentTools = await Tool.find({ status: 'approved' })
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .select('name description url');
+        await sendNewToolEmail(
+          { name: tool.name, description: tool.description, url: tool.url },
+          targetSubscribers,
+          recentTools
+        );
+      }
+    } catch (emailErr) {
+      console.error('Failed to send new tool announcement:', emailErr.message);
+    }
+
+    res.json({ message: 'Tool approved' });
+  } catch (err) {
+    console.error('Approve tool error:', err.message);
+    res.status(500).json({ error: 'Failed to approve tool' });
+  }
+});
+
+// POST /api/tools/:id/reject - reject a tool (admin only)
+router.post('/:id/reject', auth, requireAdmin, async (req, res) => {
+  try {
+    const tool = await Tool.findById(req.params.id);
+    if (!tool) return res.status(404).json({ error: 'Tool not found' });
+    tool.status = 'rejected';
+    await tool.save();
+    res.json({ message: 'Tool rejected' });
+  } catch (err) {
+    console.error('Reject tool error:', err.message);
+    res.status(500).json({ error: 'Failed to reject tool' });
+  }
+});
+
+// Legacy route for notifying subscribers when a tool is added manually by admin
+router.post('/notify-add', auth, requireAdmin, async (req, res) => {
   const { name, description, link } = req.body;
   const tool = { name, description, link };
 
   try {
-    const subscribers = await Subscriber.find({});
-    await sendNewToolEmail(tool, subscribers);
+    if ((process.env.BATCH_SEND_ENABLED || 'true').toLowerCase() === 'true') {
+      registerTool(tool);
+      return res.status(200).json({ message: '✅ Tool queued for digest announcement.' });
+    }
+    const [subscribers, users] = await Promise.all([
+      Subscriber.find({}, 'email unsubscribeToken isUnsubscribed lastSentAt'),
+      User.find({}, 'email')
+    ]);
+    const userEmailSet = new Set(users.map(u => u.email));
+    const targetSubscribers = subscribers.filter(s => !userEmailSet.has(s.email));
+    const recentTools = await Tool.find({ status: 'approved' })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('name description url');
 
-    res.status(200).json({ message: '✅ New tool added and emails sent!' });
+    await sendNewToolEmail(tool, targetSubscribers, recentTools);
+    res.status(200).json({ message: '✅ Announcement emails sent to non‑registered subscribers!' });
   } catch (error) {
     console.error('❌ Failed to notify subscribers:', error);
     res.status(500).json({ message: 'Failed to notify subscribers.' });

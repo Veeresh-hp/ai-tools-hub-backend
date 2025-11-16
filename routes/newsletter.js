@@ -1,11 +1,32 @@
-// routes/newsletter.js
+// routes/newsletter.js (patched)
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const Subscriber = require('../models/Subscriber');
+const crypto = require('crypto');
 const { sendEmail, emailTemplates } = require('../utils/emailService');
+const MIN_NEW_TOOL_EMAIL_COUNT = parseInt(process.env.MIN_NEW_TOOL_EMAIL_COUNT || '5', 10);
+
+// Rate limiter: max 20 subscribe attempts per IP per hour
+const subscribeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many subscription attempts. Please try later.' }
+});
+
+// Rate limiter for send-update (admin triggered) to avoid misuse
+const sendUpdateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many update triggers. Slow down.' }
+});
 
 // Subscribe to newsletter
-router.post('/subscribe', async (req, res) => {
+router.post('/subscribe', subscribeLimiter, async (req, res) => {
   console.log('📧 Subscription request received:', req.body);
 
   const { email } = req.body;
@@ -34,7 +55,8 @@ router.post('/subscribe', async (req, res) => {
       });
     }
 
-    const newSubscriber = new Subscriber({ email: normalizedEmail });
+  const unsubscribeToken = crypto.randomBytes(24).toString('hex');
+  const newSubscriber = new Subscriber({ email: normalizedEmail, unsubscribeToken });
     await newSubscriber.save();
     console.log('✅ New subscriber saved:', normalizedEmail);
 
@@ -64,8 +86,24 @@ router.post('/subscribe', async (req, res) => {
   }
 });
 
-// Send newsletter or new tool to all subscribers (admin only)
-router.post('/send-update', async (req, res) => {
+// Unsubscribe endpoint (moved outside subscribe handler)
+router.get('/unsubscribe/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) return res.status(400).json({ error: 'Missing token' });
+    const subscriber = await Subscriber.findOne({ unsubscribeToken: token });
+    if (!subscriber) return res.status(404).json({ error: 'Invalid unsubscribe token' });
+    subscriber.isUnsubscribed = true;
+    await subscriber.save();
+    res.json({ message: 'You have been unsubscribed successfully.' });
+  } catch (err) {
+    console.error('❌ Unsubscribe error:', err.message);
+    res.status(500).json({ error: 'Failed to unsubscribe' });
+  }
+});
+
+// Send newsletter or new tool collection to all subscribers (admin only) – requires threshold
+router.post('/send-update', sendUpdateLimiter, async (req, res) => {
   console.log('📬 Newsletter update request received');
 
   const { subject, content, toolData } = req.body;
@@ -80,15 +118,29 @@ router.post('/send-update', async (req, res) => {
 
     const emailJobs = subscribers.map(sub => {
       let mailOptions;
-
-      if (toolData) {
-        // New tool notification
-        mailOptions = emailTemplates.newTool({
-          ...toolData,
-          to: sub.email,
+      if (toolData && Array.isArray(toolData.tools)) {
+        const tools = toolData.tools;
+        if (tools.length < MIN_NEW_TOOL_EMAIL_COUNT) {
+          return Promise.resolve(); // Skip sending; below threshold
+        }
+        mailOptions = emailTemplates.newToolDigest({
+          recipientEmail: sub.email,
+          tools: tools.slice(0, 10),
+          unsubscribeUrl: `${process.env.BACKEND_URL || process.env.FRONTEND_URL}/api/newsletter/unsubscribe/${sub.unsubscribeToken}`
+        });
+      } else if (toolData && toolData.tool) {
+        // Single tool optional send only if MIN threshold explicitly met via recentTools passed
+        const recent = Array.isArray(toolData.recentTools) ? toolData.recentTools : [];
+        if ((recent.length + 1) < MIN_NEW_TOOL_EMAIL_COUNT) {
+          return Promise.resolve();
+        }
+        mailOptions = emailTemplates.newToolAnnouncement({
+          recipientEmail: sub.email,
+          tool: toolData.tool,
+          recentTools: recent.slice(0,5),
+          unsubscribeUrl: `${process.env.BACKEND_URL || process.env.FRONTEND_URL}/api/newsletter/unsubscribe/${sub.unsubscribeToken}`
         });
       } else {
-        // General newsletter
         mailOptions = {
           from: `"AI Tools Hub" <${process.env.EMAIL_USER}>`,
           to: sub.email,
@@ -96,8 +148,7 @@ router.post('/send-update', async (req, res) => {
           html: content || '<p>New update from AI Tools Hub!</p>',
         };
       }
-
-      return sendEmail(mailOptions);
+      return mailOptions ? sendEmail(mailOptions) : Promise.resolve();
     });
 
     await Promise.all(emailJobs);

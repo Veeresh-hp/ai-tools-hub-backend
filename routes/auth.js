@@ -90,7 +90,7 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
-      user: { email: user.email, username: user.username },
+      user: { email: user.email, username: user.username, role: user.role },
     });
   } catch (error) {
     console.error('Login error:', error.message);
@@ -270,12 +270,60 @@ router.post('/google-login', async (req, res) => {
 
     res.json({
       token: jwtToken,
-      user: { email: user.email, username: user.username },
+      user: { email: user.email, username: user.username, role: user.role },
       isNewUser: isNewUser // Optionally inform the frontend if it's a new user
     });
   } catch (err) {
     console.error('Google login error:', err);
     res.status(500).json({ error: 'Google login failed' });
+  }
+});
+
+// --- SYNC FAVORITES (authenticated) ---
+router.post('/favorites/sync', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Missing auth token' });
+    const token = authHeader.replace('Bearer ', '');
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    const { favorites } = req.body; // array of keys
+    if (!Array.isArray(favorites)) {
+      return res.status(400).json({ error: 'Favorites must be an array' });
+    }
+    const user = await User.findById(payload.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    user.favorites = favorites.slice(0, 500); // reasonable cap
+    await user.save();
+    res.json({ message: 'Favorites synced', favorites: user.favorites });
+  } catch (err) {
+    console.error('Favorites sync error:', err.message);
+    res.status(500).json({ error: 'Server error syncing favorites' });
+  }
+});
+
+// --- GET FAVORITES ---
+router.get('/favorites', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Missing auth token' });
+    const token = authHeader.replace('Bearer ', '');
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    const user = await User.findById(payload.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ favorites: user.favorites || [] });
+  } catch (err) {
+    console.error('Get favorites error:', err.message);
+    res.status(500).json({ error: 'Server error retrieving favorites' });
   }
 });
 

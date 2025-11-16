@@ -1,22 +1,34 @@
 const mongoose = require('mongoose');
 
 const subscriberSchema = new mongoose.Schema({
-  email: { 
-    type: String, 
+  email: {
+    type: String,
     required: [true, 'Email is required'],
     unique: true,
     lowercase: true,
     trim: true,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
       },
-      message: 'Please enter a valid email address'
-    }
+      message: 'Please enter a valid email address',
+    },
   },
-  subscribedAt: { 
-    type: Date, 
-    default: Date.now 
+  subscribedAt: {
+    type: Date,
+    default: Date.now,
+  },
+  unsubscribeToken: {
+    type: String,
+    index: true,
+  },
+  isUnsubscribed: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  lastSentAt: {
+    type: Date,
   },
 });
 
