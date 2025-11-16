@@ -31,6 +31,7 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   'https://ai-tools-rj5xk8ao0-veeresh-h-ps-projects.vercel.app',
   'https://ai-tools-7bbauireq-veeresh-h-ps-projects.vercel.app',
+  'https://ai-tools-3rvvq91dm-veeresh-h-ps-projects.vercel.app',
   'https://ai-alltools.vercel.app',
   'https://myalltools.vercel.app',
   'https://ai-tools-seven-jet.vercel.app',
