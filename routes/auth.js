@@ -99,6 +99,52 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// --- TOKEN REFRESH ---
+router.post('/refresh', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
+    // Verify the token (even if expired, we can still decode userId)
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      // If token is expired, try to decode without verification to get userId
+      if (err.name === 'TokenExpiredError') {
+        decoded = jwt.decode(token);
+      } else {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
+    if (!decoded || !decoded.userId) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Verify user still exists
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    // Issue new token
+    const newToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    res.json({
+      token: newToken,
+      user: { email: user.email, username: user.username, role: user.role },
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error.message);
+    res.status(500).json({ error: 'Server error during token refresh' });
+  }
+});
+
 // --- FORGOT PASSWORD ---
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
