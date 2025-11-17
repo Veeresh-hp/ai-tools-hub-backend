@@ -39,17 +39,18 @@ router.post('/signup', async (req, res) => {
     // Create a session token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    // Send a welcome email
-    try {
-      const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
-      await sendEmail(welcomeMailOptions);
-      console.log('✅ Welcome email sent to:', user.email);
-    } catch (emailError) {
-      console.error('❌ Failed to send welcome email:', emailError.message);
-      // Note: The signup process doesn't fail if the email fails to send.
-    }
+    // Send welcome email asynchronously (don't block response)
+    setImmediate(async () => {
+      try {
+        const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
+        await sendEmail(welcomeMailOptions);
+        console.log('✅ Welcome email sent to:', user.email);
+      } catch (emailError) {
+        console.error('❌ Failed to send welcome email:', emailError.message);
+      }
+    });
 
-    // Return the token and user info
+    // Return the token and user info immediately
     res.status(201).json({
       token,
       user: { email: user.email, username: user.username },
@@ -234,15 +235,9 @@ router.post('/google-login', async (req, res) => {
     } else {
       // If the user doesn't exist, create a new one
       isNewUser = true;
-      // Generate a unique username from the Google name or email
+      // Generate a unique username from the Google name or email with timestamp for uniqueness
       const base = (name?.replace(/\W/g, '') || email.split('@')[0]).toLowerCase();
-      let username = base;
-      let exists = await User.exists({ username });
-      // Ensure username is unique by appending random numbers if necessary
-      while (exists) {
-        username = `${base}${Math.floor(Math.random() * 10000)}`;
-        exists = await User.exists({ username });
-      }
+      const username = `${base}${Date.now().toString().slice(-6)}`;
 
       user = await User.create({
         email,
@@ -251,14 +246,16 @@ router.post('/google-login', async (req, res) => {
         // No password is set for Google-based users
       });
 
-      // Send a welcome email to the new user
-      try {
-        const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
-        await sendEmail(welcomeMailOptions);
-        console.log('✅ Welcome email sent to new Google user:', user.email);
-      } catch (emailError) {
-        console.error('❌ Failed to send welcome email to Google user:', emailError.message);
-      }
+      // Send welcome email asynchronously (don't wait for it)
+      setImmediate(async () => {
+        try {
+          const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
+          await sendEmail(welcomeMailOptions);
+          console.log('✅ Welcome email sent to new Google user:', user.email);
+        } catch (emailError) {
+          console.error('❌ Failed to send welcome email to Google user:', emailError.message);
+        }
+      });
     }
 
     // Create a session token for the user
