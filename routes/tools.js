@@ -99,6 +99,36 @@ router.get('/approved', async (req, res) => {
   }
 });
 
+// PUT /api/tools/:id/edit - edit a pending tool before approval (admin only)
+router.put('/:id/edit', auth, requireAdmin, upload.single('snapshot'), async (req, res) => {
+  try {
+    const tool = await Tool.findById(req.params.id);
+    if (!tool) return res.status(404).json({ error: 'Tool not found' });
+    
+    // Update fields if provided
+    const { name, description, url, category, pricing, badge, isNew } = req.body;
+    if (name) tool.name = name;
+    if (description) tool.description = description;
+    if (url) tool.url = url;
+    if (category) tool.category = category;
+    if (pricing) tool.pricing = pricing;
+    if (badge !== undefined) tool.badge = badge || null;
+    if (isNew !== undefined) tool.isNew = isNew === 'true' || isNew === true;
+    
+    // Update snapshot if a new file is uploaded
+    if (req.file) {
+      const backendBase = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:5000';
+      tool.snapshot = `${backendBase}/uploads/${req.file.filename}`;
+    }
+    
+    await tool.save();
+    res.json({ message: 'Tool updated successfully', tool });
+  } catch (err) {
+    console.error('Edit tool error:', err.message);
+    res.status(500).json({ error: 'Failed to update tool' });
+  }
+});
+
 // POST /api/tools/:id/approve - approve a tool (admin only)
 router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
   try {
