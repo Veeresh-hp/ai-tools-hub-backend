@@ -87,8 +87,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 
-// Serve uploaded files (snapshots)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files (snapshots) with friendly cache headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, filePath) => {
+    // Allow browsers/CDN to cache but revalidate periodically
+    res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+  }
+}));
 
 // ✅ Default route
 app.get('/', (req, res) => {
