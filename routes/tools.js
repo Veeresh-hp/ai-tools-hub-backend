@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const Tool = require('../models/Tool');
 const Subscriber = require('../models/Subscriber');
 const { sendNewToolEmail } = require('../utils/emailService');
@@ -11,32 +12,54 @@ const { auth, requireAdmin } = require('../middleware/auth');
 
 // Cloudinary setup (if configured, else fallback to local)
 let upload;
-if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
-  const cloudinary = require('cloudinary').v2;
-  const { CloudinaryStorage } = require('multer-storage-cloudinary');
-  
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
-  });
+const hasCloudinary = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
 
-  const cloudinaryStorage = new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: {
-      folder: 'ai-tools-snapshots',
-      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-      transformation: [{ width: 800, height: 600, crop: 'limit' }]
-    }
-  });
+if (hasCloudinary) {
+  try {
+    const cloudinary = require('cloudinary').v2;
+    const { CloudinaryStorage } = require('multer-storage-cloudinary');
+    
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET
+    });
 
-  upload = multer({ storage: cloudinaryStorage, limits: { fileSize: 5 * 1024 * 1024 } });
-  console.log('✅ Using Cloudinary for image storage');
-} else {
+    const cloudinaryStorage = new CloudinaryStorage({
+      cloudinary: cloudinary,
+      params: {
+        folder: 'ai-tools-snapshots',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+        transformation: [{ width: 800, height: 600, crop: 'limit' }]
+      }
+    });
+
+    upload = multer({ storage: cloudinaryStorage, limits: { fileSize: 5 * 1024 * 1024 } });
+    console.log('✅ Using Cloudinary for image storage');
+  } catch (err) {
+    console.error('❌ Cloudinary setup failed:', err.message);
+    console.log('⚠️ Falling back to local storage');
+    hasCloudinary = false; // Force fallback
+  }
+}
+
+if (!hasCloudinary) {
   // Fallback to local storage for development
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  
+  // Ensure uploads directory exists
+  if (!fs.existsSync(uploadsDir)) {
+    try {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log('📁 Created uploads directory');
+    } catch (err) {
+      console.error('❌ Failed to create uploads directory:', err.message);
+    }
+  }
+
   const localStorage = multer.diskStorage({
     destination: function (req, file, cb) {
-      cb(null, path.join(__dirname, '..', 'uploads'));
+      cb(null, uploadsDir);
     },
     filename: function (req, file, cb) {
       const unique = `${Date.now()}-${Math.round(Math.random()*1e9)}${path.extname(file.originalname)}`;
@@ -48,17 +71,33 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && proce
 }
 
 // POST /api/tools/upload - upload snapshot image (no auth required - open to everyone)
-router.post('/upload', upload.single('snapshot'), (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    
-    // Return Cloudinary URL if using cloud storage, else local path
-    const fileUrl = req.file.path || `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl });
-  } catch (err) {
-    console.error('Upload error:', err.message);
-    res.status(500).json({ error: 'Failed to upload file' });
-  }
+router.post('/upload', (req, res) => {
+  const uploadMiddleware = upload.single('snapshot');
+  
+  uploadMiddleware(req, res, (err) => {
+    if (err) {
+      console.error('Multer upload error:', err.message);
+      return res.status(500).json({ 
+        error: 'File upload failed', 
+        details: err.message,
+        hint: hasCloudinary ? 'Check Cloudinary credentials' : 'Check uploads folder permissions'
+      });
+    }
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      
+      // Return Cloudinary URL if using cloud storage, else local path
+      const fileUrl = req.file.path || `/uploads/${req.file.filename}`;
+      console.log('✅ File uploaded successfully:', fileUrl);
+      res.json({ url: fileUrl });
+    } catch (err) {
+      console.error('Upload processing error:', err.message);
+      res.status(500).json({ error: 'Failed to process uploaded file' });
+    }
+  });
 });
 
 // POST /api/tools/submit - submit new tool (open to everyone, auth optional)
