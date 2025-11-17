@@ -117,8 +117,8 @@ router.put('/:id/edit', auth, requireAdmin, upload.single('snapshot'), async (re
     
     // Update snapshot if a new file is uploaded
     if (req.file) {
-      const backendBase = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:5000';
-      tool.snapshot = `${backendBase}/uploads/${req.file.filename}`;
+      // Store as relative path so frontend can prefix with API base
+      tool.snapshotUrl = `/uploads/${req.file.filename}`;
     }
     
     await tool.save();
