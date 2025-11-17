@@ -9,23 +9,51 @@ const User = require('../models/User');
 const { registerTool } = require('../utils/announcementQueue');
 const { auth, requireAdmin } = require('../middleware/auth');
 
-// Multer setup for snapshot uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '..', 'uploads'));
-  },
-  filename: function (req, file, cb) {
-    const unique = `${Date.now()}-${Math.round(Math.random()*1e9)}${path.extname(file.originalname)}`;
-    cb(null, unique);
-  }
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
+// Cloudinary setup (if configured, else fallback to local)
+let upload;
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  const cloudinary = require('cloudinary').v2;
+  const { CloudinaryStorage } = require('multer-storage-cloudinary');
+  
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+  });
+
+  const cloudinaryStorage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+      folder: 'ai-tools-snapshots',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+      transformation: [{ width: 800, height: 600, crop: 'limit' }]
+    }
+  });
+
+  upload = multer({ storage: cloudinaryStorage, limits: { fileSize: 5 * 1024 * 1024 } });
+  console.log('✅ Using Cloudinary for image storage');
+} else {
+  // Fallback to local storage for development
+  const localStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, path.join(__dirname, '..', 'uploads'));
+    },
+    filename: function (req, file, cb) {
+      const unique = `${Date.now()}-${Math.round(Math.random()*1e9)}${path.extname(file.originalname)}`;
+      cb(null, unique);
+    }
+  });
+  upload = multer({ storage: localStorage, limits: { fileSize: 5 * 1024 * 1024 } });
+  console.log('⚠️ Using local storage for images (not suitable for production)');
+}
 
 // POST /api/tools/upload - upload snapshot image (no auth required - open to everyone)
 router.post('/upload', upload.single('snapshot'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const fileUrl = `/uploads/${req.file.filename}`; // served statically by server
+    
+    // Return Cloudinary URL if using cloud storage, else local path
+    const fileUrl = req.file.path || `/uploads/${req.file.filename}`;
     res.json({ url: fileUrl });
   } catch (err) {
     console.error('Upload error:', err.message);
