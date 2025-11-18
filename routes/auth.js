@@ -273,10 +273,28 @@ router.post('/google-login', async (req, res) => {
     let isNewUser = false; // Flag to track if a new user is created
 
     if (user) {
-      // If a user with this email exists but doesn't have a googleId, link the account
+      // Existing account. If first time Google linking, attach googleId and send welcome/link email.
       if (!user.googleId) {
         user.googleId = googleId;
         await user.save();
+        // Send a welcome email on first Google link (do not block response)
+        setImmediate(async () => {
+          try {
+            const mail = emailTemplates.welcome(user.email, user.username);
+            await sendEmail(mail);
+            console.log('✅ Welcome email sent on first Google link:', user.email);
+          } catch (e) {
+            console.error('❌ Failed sending Google link welcome email:', e.message);
+            // Single retry
+            try {
+              const mail = emailTemplates.welcome(user.email, user.username);
+              await sendEmail(mail);
+              console.log('✅ Retry succeeded for Google link welcome email:', user.email);
+            } catch (e2) {
+              console.error('❌ Retry failed for Google link welcome email:', e2.message);
+            }
+          }
+        });
       }
     } else {
       // If the user doesn't exist, create a new one
