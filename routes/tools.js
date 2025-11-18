@@ -184,8 +184,8 @@ router.put('/:id/edit', auth, requireAdmin, upload.single('snapshot'), async (re
     
     // Update snapshot if a new file is uploaded
     if (req.file) {
-      // Store as relative path so frontend can prefix with API base
-      tool.snapshotUrl = `/uploads/${req.file.filename}`;
+      // Use Cloudinary URL if available, else local path
+      tool.snapshotUrl = req.file.path || `/uploads/${req.file.filename}`;
     }
     
     await tool.save();
