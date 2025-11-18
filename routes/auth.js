@@ -39,18 +39,12 @@ router.post('/signup', async (req, res) => {
     // Create a session token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    // Send welcome email synchronously to ensure it's sent
-    try {
-      console.log('📧 Attempting to send welcome email to:', user.email);
-      const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
-      await sendEmail(welcomeMailOptions);
-      console.log('✅ Welcome email sent successfully to:', user.email);
-    } catch (emailError) {
-      console.error('❌ Failed to send welcome email to', user.email, ':', emailError.message);
-      // Continue with signup even if email fails
-    }
+    // Send welcome email in background (non-blocking for faster response)
+    sendEmail(emailTemplates.welcome(user.email, user.username))
+      .then(() => console.log('✅ Welcome email sent to:', user.email))
+      .catch(e => console.error('❌ Failed to send welcome email to', user.email, ':', e.message));
 
-    // Return the token and user info
+    // Return the token and user info immediately
     res.status(201).json({
       token,
       user: { email: user.email, username: user.username },
@@ -277,16 +271,10 @@ router.post('/google-login', async (req, res) => {
       if (!user.googleId) {
         user.googleId = googleId;
         await user.save();
-        // Send welcome email on first Google link
-        try {
-          console.log('📧 Attempting to send welcome email for first Google link:', user.email);
-          const mail = emailTemplates.welcome(user.email, user.username);
-          await sendEmail(mail);
-          console.log('✅ Welcome email sent successfully on first Google link:', user.email);
-        } catch (e) {
-          console.error('❌ Failed sending Google link welcome email to', user.email, ':', e.message);
-          // Continue with login even if email fails
-        }
+        // Send welcome email in background (non-blocking for speed)
+        sendEmail(emailTemplates.welcome(user.email, user.username))
+          .then(() => console.log('✅ Welcome email sent on first Google link:', user.email))
+          .catch(e => console.error('❌ Failed sending Google link welcome email to', user.email, ':', e.message));
       }
     } else {
       // If the user doesn't exist, create a new one
@@ -302,16 +290,10 @@ router.post('/google-login', async (req, res) => {
         // No password is set for Google-based users
       });
 
-      // Send welcome email synchronously to ensure it's sent
-      try {
-        console.log('📧 Attempting to send welcome email to new Google user:', user.email);
-        const welcomeMailOptions = emailTemplates.welcome(user.email, user.username);
-        await sendEmail(welcomeMailOptions);
-        console.log('✅ Welcome email sent successfully to new Google user:', user.email);
-      } catch (emailError) {
-        console.error('❌ Failed to send welcome email to Google user', user.email, ':', emailError.message);
-        // Continue with login even if email fails
-      }
+      // Send welcome email in background (non-blocking for speed)
+      sendEmail(emailTemplates.welcome(user.email, user.username))
+        .then(() => console.log('✅ Welcome email sent to new Google user:', user.email))
+        .catch(e => console.error('❌ Failed sending welcome email to Google user', user.email, ':', e.message));
     }
 
     // Create a session token for the user
