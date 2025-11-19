@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const fs = require('fs');
+const cron = require('node-cron');
 
 const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contact');
@@ -12,6 +13,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { checkEnv } = require('./utils/envCheck');
 const path = require('path');
+const { sendDailyNotification, sendWeeklyDigest } = require('./utils/toolNotificationService');
 
 dotenv.config();
 
@@ -136,6 +138,35 @@ mongoose.connection.on('error', (err) => {
 mongoose.connection.on('disconnected', () => {
   console.warn('⚠️ Mongoose disconnected from MongoDB');
 });
+
+// ✅ Setup automated notification cron jobs
+// Daily check at 9:00 PM (21:00) - sends if 5+ tools approved today
+cron.schedule('0 21 * * *', async () => {
+  console.log('⏰ Running daily notification check (9 PM)...');
+  try {
+    await sendDailyNotification();
+  } catch (error) {
+    console.error('❌ Daily notification cron failed:', error);
+  }
+}, {
+  timezone: "Asia/Kolkata" // Adjust to your timezone
+});
+
+// Weekly digest every Monday at 10:00 AM
+cron.schedule('0 10 * * 1', async () => {
+  console.log('⏰ Running weekly digest (Monday 10 AM)...');
+  try {
+    await sendWeeklyDigest();
+  } catch (error) {
+    console.error('❌ Weekly digest cron failed:', error);
+  }
+}, {
+  timezone: "Asia/Kolkata" // Adjust to your timezone
+});
+
+console.log('📅 Cron jobs initialized:');
+console.log('  - Daily check: Every day at 9:00 PM (sends if 5+ tools)');
+console.log('  - Weekly digest: Every Monday at 10:00 AM');
 
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
