@@ -1,7 +1,9 @@
+// ✅ Load .env FIRST so all other files see the env variables
+require('dotenv').config();
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const fs = require('fs');
 const cron = require('node-cron');
 
@@ -15,7 +17,6 @@ const { checkEnv } = require('./utils/envCheck');
 const path = require('path');
 const { sendDailyNotification, sendWeeklyDigest } = require('./utils/toolNotificationService');
 
-dotenv.config();
 
 // Ensure uploads directory exists
 const uploadsDir = require('path').join(__dirname, 'uploads');
@@ -167,6 +168,27 @@ cron.schedule('0 10 * * 1', async () => {
 console.log('📅 Cron jobs initialized:');
 console.log('  - Daily check: Every day at 9:00 PM (sends if 5+ tools)');
 console.log('  - Weekly digest: Every Monday at 10:00 AM');
+
+
+
+
+const { sendEmail } = require('./utils/emailService');
+
+app.get('/api/test-email', async (req, res) => {
+  try {
+    await sendEmail({
+      to: 'aitoolshub2@gmail.com', // your email to receive the test
+      subject: '✅ Test email from AI Tools Hub (Resend)',
+      html: '<p>If you see this, Resend is working correctly! 🎉</p>',
+    });
+    res.json({ success: true, message: 'Test email sent.' });
+  } catch (err) {
+    console.error('❌ Test email failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
