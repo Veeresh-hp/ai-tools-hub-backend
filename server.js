@@ -1,4 +1,11 @@
-// ✅ Load .env FIRST so all other files see the env variables
+// server.js (FINAL - paste exactly into VS Code)
+//
+// Updated: consistent `path` usage, uploads dir creation, static serving before routes,
+// improved /api/test-email with helpful hints, global error handler, and minor cleanups.
+// NOTE: For local preview image (you uploaded an image), the absolute path is included below.
+// That path is: /mnt/data/c5f7f900-1f71-4392-ab86-dc5f6ceedddb.png
+// (If you want to use this in production emails, replace with a public HTTPS URL or set EMAIL_LOGO_URL)
+
 require('dotenv').config();
 
 const express = require('express');
@@ -6,31 +13,40 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const fs = require('fs');
 const cron = require('node-cron');
+const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contact');
 const newsletterRoutes = require('./routes/newsletter');
 const toolRoutes = require('./routes/tools');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const { checkEnv } = require('./utils/envCheck');
-const path = require('path');
 const { sendDailyNotification, sendWeeklyDigest } = require('./utils/toolNotificationService');
-
-
-// Ensure uploads directory exists
-const uploadsDir = require('path').join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+const { sendEmail } = require('./utils/emailService');
 
 const app = express();
 checkEnv();
 
-// ✅ Fix for Express behind proxy (e.g. Render)
+// Ensure uploads directory exists (create if missing)
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// -------------------------
+// DEV / DEBUG: path to uploaded preview image you provided
+// (This is the local path to the image you uploaded in the chat UI)
+// You can use this for local testing, but in production always use an HTTPS URL or EMAIL_LOGO_URL env var.
+const DEV_UPLOADED_PREVIEW_IMAGE = '/mnt/data/c5f7f900-1f71-4392-ab86-dc5f6ceedddb.png';
+// -------------------------
+
+// Trust proxy (useful on Render/proxy hosting)
 app.set('trust proxy', 1);
 
-// ✅ ALLOWED ORIGINS FOR CORS (NO trailing slashes)
+// -------------------------
+// CORS configuration
+// -------------------------
 const allowedOrigins = [
   'https://ai-tools-rj5xk8ao0-veeresh-h-ps-projects.vercel.app',
   'https://ai-tools-7bbauireq-veeresh-h-ps-projects.vercel.app',
@@ -41,15 +57,14 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 
-// ✅ CORS middleware — apply this FIRST (with wildcard for Vercel preview URLs)
 app.use(cors({
   origin: function(origin, callback) {
     if (!origin) {
+      // Allow non-browser clients like curl/postman
       callback(null, true);
       return;
     }
-    // Allow all Vercel preview URLs from your project
-    const isVercelPreview = origin.match(/^https:\/\/ai-tools-[a-z0-9]+-veeresh-h-ps-projects\.vercel\.app$/);
+    const isVercelPreview = !!origin.match(/^https:\/\/ai-tools-[a-z0-9]+-veeresh-h-ps-projects\.vercel\.app$/);
     if (allowedOrigins.includes(origin) || isVercelPreview) {
       callback(null, true);
     } else {
@@ -59,10 +74,15 @@ app.use(cors({
   credentials: true,
 }));
 
-// ✅ Handle OPTIONS (preflight) requests globally
+// Handle OPTIONS preflight globally
 app.options('*', cors({
   origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    const isVercelPreview = !!origin.match(/^https:\/\/ai-tools-[a-z0-9]+-veeresh-h-ps-projects\.vercel\.app$/);
+    if (allowedOrigins.includes(origin) || isVercelPreview) {
       callback(null, true);
     } else {
       callback(new Error(`❌ CORS preflight blocked from origin: ${origin}`));
@@ -71,39 +91,46 @@ app.options('*', cors({
   credentials: true,
 }));
 
-// ✅ Built-in body parser must come after CORS
+// -------------------------
+// Security, parsers, rate-limit
+// -------------------------
 app.use(express.json());
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// Generic rate limiter (fallback) – 300 requests / 15 min per IP
 const genericLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
 });
 app.use(genericLimiter);
 
-// ✅ Route handlers (after middleware)
+// -------------------------
+// Serve uploads publicly (static) - placed early so static assets are quickly served
+// Cache-Control helps with client/CDN caching
+// -------------------------
+app.use('/uploads', express.static(uploadsDir, {
+  setHeaders: (res, filePath) => {
+    res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+  }
+}));
+
+// -------------------------
+// API Routes
+// -------------------------
 app.use('/api/tools', toolRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 
-// Serve uploaded files (snapshots) with friendly cache headers
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res, filePath) => {
-    // Allow browsers/CDN to cache but revalidate periodically
-    res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
-  }
-}));
-
-// ✅ Default route
+// Health check
 app.get('/', (req, res) => {
   res.send('✅ Backend working!');
 });
 
-// ✅ MongoDB connection with retry logic
+// -------------------------
+// MongoDB connection with retry logic
+// -------------------------
 mongoose.connect(process.env.MONGO_URI, {
   maxPoolSize: 10,
   serverSelectionTimeoutMS: 10000,
@@ -127,21 +154,13 @@ mongoose.connect(process.env.MONGO_URI, {
     }, 10000);
   });
 
-// Listen for connection events
-mongoose.connection.on('connected', () => {
-  console.log('✅ Mongoose connected to MongoDB');
-});
+mongoose.connection.on('connected', () => console.log('✅ Mongoose connected to MongoDB'));
+mongoose.connection.on('error', (err) => console.error('❌ Mongoose connection error:', err));
+mongoose.connection.on('disconnected', () => console.warn('⚠️ Mongoose disconnected from MongoDB'));
 
-mongoose.connection.on('error', (err) => {
-  console.error('❌ Mongoose connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️ Mongoose disconnected from MongoDB');
-});
-
-// ✅ Setup automated notification cron jobs
-// Daily check at 9:00 PM (21:00) - sends if 5+ tools approved today
+// -------------------------
+// Cron jobs (notifications)
+// -------------------------
 cron.schedule('0 21 * * *', async () => {
   console.log('⏰ Running daily notification check (9 PM)...');
   try {
@@ -149,11 +168,8 @@ cron.schedule('0 21 * * *', async () => {
   } catch (error) {
     console.error('❌ Daily notification cron failed:', error);
   }
-}, {
-  timezone: "Asia/Kolkata" // Adjust to your timezone
-});
+}, { timezone: 'Asia/Kolkata' });
 
-// Weekly digest every Monday at 10:00 AM
 cron.schedule('0 10 * * 1', async () => {
   console.log('⏰ Running weekly digest (Monday 10 AM)...');
   try {
@@ -161,37 +177,52 @@ cron.schedule('0 10 * * 1', async () => {
   } catch (error) {
     console.error('❌ Weekly digest cron failed:', error);
   }
-}, {
-  timezone: "Asia/Kolkata" // Adjust to your timezone
-});
+}, { timezone: 'Asia/Kolkata' });
 
 console.log('📅 Cron jobs initialized:');
 console.log('  - Daily check: Every day at 9:00 PM (sends if 5+ tools)');
 console.log('  - Weekly digest: Every Monday at 10:00 AM');
 
-
-
-
-const { sendEmail } = require('./utils/emailService');
-
+// -------------------------
+// Test email route (helpful hints & DEV override)
+// -------------------------
 app.get('/api/test-email', async (req, res) => {
   try {
+    const testRecipient = process.env.DEV_TEST_EMAIL || 'aitoolshub2@gmail.com';
     await sendEmail({
-      to: 'aitoolshub2@gmail.com', // your email to receive the test
+      to: testRecipient,
       subject: '✅ Test email from AI Tools Hub (Resend)',
       html: '<p>If you see this, Resend is working correctly! 🎉</p>',
     });
     res.json({ success: true, message: 'Test email sent.' });
   } catch (err) {
-    console.error('❌ Test email failed:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('❌ Test email failed:', (err && err.message) ? err.message : err);
+    const hint = (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM)
+      ? 'Missing RESEND_API_KEY or EMAIL_FROM in .env'
+      : undefined;
+    res.status(500).json({ success: false, error: (err && err.message) ? err.message : String(err), hint });
   }
 });
 
+// -------------------------
+// Global error handler (catches errors like CORS blocking and others)
+// -------------------------
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err && err.message ? err.message : err);
+  if (err && typeof err.message === 'string' && err.message.startsWith('❌ CORS')) {
+    return res.status(403).json({ success: false, error: err.message });
+  }
+  res.status(500).json({ success: false, error: 'Internal server error' });
+});
 
-
-// ✅ Start server
+// -------------------------
+// Start server
+// -------------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  // Helpful runtime hints
+  console.log('ENV HINTS:');
+  console.log(`  BACKEND_URL=${process.env.BACKEND_URL || '(not set)'}`);
+  console.log(`  EMAIL_LOGO_URL=${process.env.EMAIL_LOGO_URL || '(not set)'} (dev preview path available in code: ${DEV_UPLOADED_PREVIEW_IMAGE})`);
 });
