@@ -150,3 +150,11 @@ The digest includes:
 Next notification triggers:
 - **Next Monday 10 AM**: Weekly digest
 - **Next day with 5+ tools at 9 PM**: Daily notification
+
+
+SingleTest Email
+node testSingleEmail.js veereshhp2004@gmail.com
+
+
+
+

@@ -21,6 +21,7 @@ const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contact');
 const newsletterRoutes = require('./routes/newsletter');
 const toolRoutes = require('./routes/tools');
+const categoryRoutes = require('./routes/categories');
 const { checkEnv } = require('./utils/envCheck');
 const { sendDailyNotification, sendWeeklyDigest } = require('./utils/toolNotificationService');
 const { sendEmail } = require('./utils/emailService');
@@ -58,7 +59,7 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
     if (!origin) {
       // Allow non-browser clients like curl/postman
       callback(null, true);
@@ -76,7 +77,7 @@ app.use(cors({
 
 // Handle OPTIONS preflight globally
 app.options('*', cors({
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
     if (!origin) {
       callback(null, true);
       return;
@@ -122,6 +123,7 @@ app.use('/api/tools', toolRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Health check
 app.get('/', (req, res) => {

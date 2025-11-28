@@ -12,13 +12,13 @@ const { auth, requireAdmin } = require('../middleware/auth');
 
 // Cloudinary setup (if configured, else fallback to local)
 let upload;
-const hasCloudinary = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
+let hasCloudinary = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
 
 if (hasCloudinary) {
   try {
     const cloudinary = require('cloudinary').v2;
     const { CloudinaryStorage } = require('multer-storage-cloudinary');
-    
+
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
@@ -46,7 +46,7 @@ if (hasCloudinary) {
 if (!hasCloudinary) {
   // Fallback to local storage for development
   const uploadsDir = path.join(__dirname, '..', 'uploads');
-  
+
   // Ensure uploads directory exists
   if (!fs.existsSync(uploadsDir)) {
     try {
@@ -62,7 +62,7 @@ if (!hasCloudinary) {
       cb(null, uploadsDir);
     },
     filename: function (req, file, cb) {
-      const unique = `${Date.now()}-${Math.round(Math.random()*1e9)}${path.extname(file.originalname)}`;
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
       cb(null, unique);
     }
   });
@@ -73,12 +73,12 @@ if (!hasCloudinary) {
 // POST /api/tools/upload - upload snapshot image (no auth required - open to everyone)
 router.post('/upload', (req, res) => {
   const uploadMiddleware = upload.single('snapshot');
-  
+
   uploadMiddleware(req, res, (err) => {
     if (err) {
       console.error('Multer upload error:', err.message);
-      return res.status(500).json({ 
-        error: 'File upload failed', 
+      return res.status(500).json({
+        error: 'File upload failed',
         details: err.message,
         hint: hasCloudinary ? 'Check Cloudinary credentials' : 'Check uploads folder permissions'
       });
@@ -88,7 +88,7 @@ router.post('/upload', (req, res) => {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      
+
       // Return Cloudinary URL if using cloud storage, else local path
       const fileUrl = req.file.path || `/uploads/${req.file.filename}`;
       console.log('✅ File uploaded successfully:', fileUrl);
@@ -100,94 +100,98 @@ router.post('/upload', (req, res) => {
   });
 });
 
-// POST /api/tools/submit - submit new tool (open to everyone, auth optional)
-router.post('/submit', async (req, res) => {
+// GET /api/tools/approved - get all approved tools (public)
+router.get('/approved', async (req, res) => {
   try {
-    const { name, description, url, category, snapshotUrl, submitterEmail } = req.body;
-    if (!name || !description) return res.status(400).json({ error: 'Name and description are required' });
-    if (!category) return res.status(400).json({ error: 'Category is required' });
+    const { category, search } = req.query;
+    let query = { status: 'approved' };
 
-    // Check if user is authenticated from header (optional)
-    let submittedBy = null;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const token = authHeader.split(' ')[1];
-        const jwt = require('jsonwebtoken');
-        const payload = jwt.verify(token, process.env.JWT_SECRET);
-        const User = require('../models/User');
-        const user = await User.findById(payload.userId);
-        if (user) submittedBy = user._id;
-      } catch (err) {
-        // Token invalid or expired - ignore and continue as anonymous
-        console.log('Token verification failed, submitting as anonymous');
-      }
+    if (category && category !== 'All') {
+      query.category = category;
     }
 
-    const tool = await Tool.create({
-      name,
-      description,
-      url,
-      category,
-      snapshotUrl,
-      submittedBy, // can be null for anonymous submissions
-      status: 'pending'
-    });
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { shortDescription: { $regex: search, $options: 'i' } },
+        { hashtags: { $regex: search, $options: 'i' } }
+      ];
+    }
 
-    res.status(201).json({ message: 'Tool submitted and pending admin approval', tool });
+    const tools = await Tool.find(query)
+      .sort({ isAiToolsChoice: -1, createdAt: -1 });
+
+    res.json({ tools });
   } catch (err) {
-    console.error('Submit tool error:', err.message);
-    res.status(500).json({ error: 'Failed to submit tool' });
+    console.error('Get tools error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch tools' });
   }
 });
 
-// GET /api/tools/pending - list pending tools (admin only)
+// GET /api/tools/pending - get pending tools (admin only)
 router.get('/pending', auth, requireAdmin, async (req, res) => {
   try {
-    const pending = await Tool.find({ status: 'pending' }).populate('submittedBy', 'username email');
-    res.json({ tools: pending });
+    const tools = await Tool.find({ status: 'pending' }).sort({ createdAt: -1 });
+    res.json({ tools });
   } catch (err) {
     console.error('Get pending tools error:', err.message);
     res.status(500).json({ error: 'Failed to fetch pending tools' });
   }
 });
 
-// GET /api/tools/approved - get all approved tools (public - no auth required)
-// MUST be before /:id routes to avoid conflict
-router.get('/approved', async (req, res) => {
+// POST /api/tools/submit - submit a new tool
+router.post('/submit', async (req, res) => {
   try {
-    const approved = await Tool.find({ status: 'approved' })
-      .populate('submittedBy', 'username')
-      .sort({ createdAt: -1 }); // newest first
-    res.json({ tools: approved });
+    const { name, shortDescription, description, url, category, pricing, snapshotUrl, hashtags } = req.body;
+
+    // Validate required fields
+    if (!name || !shortDescription || !description || !url || !category || !snapshotUrl) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const tool = new Tool({
+      name,
+      shortDescription,
+      description,
+      url,
+      category,
+      pricing,
+      snapshotUrl,
+      hashtags: hashtags || [],
+      status: 'pending'
+    });
+
+    if (req.user) tool.submittedBy = req.user._id;
+
+    await tool.save();
+    res.status(201).json({ message: 'Tool submitted successfully', tool });
   } catch (err) {
-    console.error('Get approved tools error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch approved tools' });
+    console.error('Submit tool error:', err.message);
+    res.status(500).json({ error: 'Failed to submit tool' });
   }
 });
 
-// PUT /api/tools/:id/edit - edit a pending tool before approval (admin only)
+// PUT /api/tools/:id/edit - edit a tool (admin only)
 router.put('/:id/edit', auth, requireAdmin, upload.single('snapshot'), async (req, res) => {
   try {
     const tool = await Tool.findById(req.params.id);
     if (!tool) return res.status(404).json({ error: 'Tool not found' });
-    
-    // Update fields if provided
-    const { name, description, url, category, pricing, badge, isNew } = req.body;
+
+    const { name, shortDescription, description, url, category, pricing, hashtags } = req.body;
+
     if (name) tool.name = name;
+    if (shortDescription) tool.shortDescription = shortDescription;
     if (description) tool.description = description;
     if (url) tool.url = url;
     if (category) tool.category = category;
     if (pricing) tool.pricing = pricing;
-    if (badge !== undefined) tool.badge = badge || null;
-    if (isNew !== undefined) tool.isNew = isNew === 'true' || isNew === true;
-    
-    // Update snapshot if a new file is uploaded
+    if (hashtags) tool.hashtags = Array.isArray(hashtags) ? hashtags : hashtags.split(',').map(t => t.trim());
+
     if (req.file) {
-      // Use Cloudinary URL if available, else local path
       tool.snapshotUrl = req.file.path || `/uploads/${req.file.filename}`;
     }
-    
+
     await tool.save();
     res.json({ message: 'Tool updated successfully', tool });
   } catch (err) {
@@ -201,7 +205,12 @@ router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
   try {
     const tool = await Tool.findById(req.params.id);
     if (!tool) return res.status(404).json({ error: 'Tool not found' });
+
     tool.status = 'approved';
+    if (req.body.isAiToolsChoice) {
+      tool.isAiToolsChoice = true;
+    }
+
     await tool.save();
 
     // Either enqueue for digest or send immediately
