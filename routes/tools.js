@@ -145,12 +145,7 @@ router.post('/submit', async (req, res) => {
   try {
     const { name, shortDescription, description, url, category, pricing, snapshotUrl, hashtags } = req.body;
 
-    // Validate required fields
-    if (!name || !shortDescription || !description || !url || !category || !snapshotUrl) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const tool = new Tool({
+    const newTool = new Tool({
       name,
       shortDescription,
       description,
@@ -158,45 +153,15 @@ router.post('/submit', async (req, res) => {
       category,
       pricing,
       snapshotUrl,
-      hashtags: hashtags || [],
+      hashtags: hashtags ? hashtags.split(',').map(tag => tag.trim()) : [],
       status: 'pending'
     });
 
-    if (req.user) tool.submittedBy = req.user._id;
-
-    await tool.save();
-    res.status(201).json({ message: 'Tool submitted successfully', tool });
+    await newTool.save();
+    res.json({ message: 'Tool submitted successfully', tool: newTool });
   } catch (err) {
     console.error('Submit tool error:', err.message);
     res.status(500).json({ error: 'Failed to submit tool' });
-  }
-});
-
-// PUT /api/tools/:id/edit - edit a tool (admin only)
-router.put('/:id/edit', auth, requireAdmin, upload.single('snapshot'), async (req, res) => {
-  try {
-    const tool = await Tool.findById(req.params.id);
-    if (!tool) return res.status(404).json({ error: 'Tool not found' });
-
-    const { name, shortDescription, description, url, category, pricing, hashtags } = req.body;
-
-    if (name) tool.name = name;
-    if (shortDescription) tool.shortDescription = shortDescription;
-    if (description) tool.description = description;
-    if (url) tool.url = url;
-    if (category) tool.category = category;
-    if (pricing) tool.pricing = pricing;
-    if (hashtags) tool.hashtags = Array.isArray(hashtags) ? hashtags : hashtags.split(',').map(t => t.trim());
-
-    if (req.file) {
-      tool.snapshotUrl = req.file.path || `/uploads/${req.file.filename}`;
-    }
-
-    await tool.save();
-    res.json({ message: 'Tool updated successfully', tool });
-  } catch (err) {
-    console.error('Edit tool error:', err.message);
-    res.status(500).json({ error: 'Failed to update tool' });
   }
 });
 
@@ -207,16 +172,13 @@ router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
     if (!tool) return res.status(404).json({ error: 'Tool not found' });
 
     tool.status = 'approved';
-    if (req.body.isAiToolsChoice) {
-      tool.isAiToolsChoice = true;
-    }
-
     await tool.save();
 
-    // Either enqueue for digest or send immediately
+    // Send email notifications
     try {
       if ((process.env.BATCH_SEND_ENABLED || 'true').toLowerCase() === 'true') {
-        registerTool({ name: tool.name, description: tool.description, url: tool.url });
+        registerTool(tool);
+        console.log(`Tool "${tool.name}" queued for digest announcement.`);
       } else {
         const [subscribers, users] = await Promise.all([
           Subscriber.find({}, 'email unsubscribeToken isUnsubscribed lastSentAt'),
@@ -228,6 +190,7 @@ router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
           .sort({ createdAt: -1 })
           .limit(5)
           .select('name description url');
+
         await sendNewToolEmail(
           { name: tool.name, description: tool.description, url: tool.url },
           targetSubscribers,
@@ -285,6 +248,22 @@ router.post('/notify-add', auth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to notify subscribers:', error);
     res.status(500).json({ message: 'Failed to notify subscribers.' });
+  }
+});
+
+// PUT /api/tools/:id/toggle-choice - toggle admin choice status (admin only)
+router.put('/:id/toggle-choice', auth, requireAdmin, async (req, res) => {
+  try {
+    const tool = await Tool.findById(req.params.id);
+    if (!tool) return res.status(404).json({ error: 'Tool not found' });
+
+    tool.isAiToolsChoice = !tool.isAiToolsChoice;
+    await tool.save();
+
+    res.json({ message: `Tool choice status updated to ${tool.isAiToolsChoice}`, tool });
+  } catch (err) {
+    console.error('Toggle choice error:', err.message);
+    res.status(500).json({ error: 'Failed to toggle choice status' });
   }
 });
 
