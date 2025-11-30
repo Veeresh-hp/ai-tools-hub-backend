@@ -10,7 +10,7 @@ const toolSchema = new mongoose.Schema({
   category: { type: String, required: true, trim: true }, // Category for the tool
   snapshotUrl: { type: String, required: true, trim: true }, // Image is now required
   hashtags: { type: [String], default: [] }, // Array of hashtags
-  pricing: { type: String, enum: ['Free', 'Freemium', 'Paid', 'Open Source'], default: 'Freemium' }, // Pricing model
+  pricing: { type: String, enum: ['Free', 'Freemium', 'Paid', 'Open Source', 'Free Trial', 'Contact'], default: 'Freemium' }, // Pricing model
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   isAiToolsChoice: { type: Boolean, default: false },
   submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false }, // Optional - can be null for anonymous submissions
