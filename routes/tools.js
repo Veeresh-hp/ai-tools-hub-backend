@@ -153,7 +153,9 @@ router.post('/submit', async (req, res) => {
       category,
       pricing,
       snapshotUrl,
-      hashtags: hashtags ? hashtags.split(',').map(tag => tag.trim()) : [],
+      hashtags: Array.isArray(hashtags)
+        ? hashtags.map(tag => tag.trim())
+        : (hashtags ? hashtags.split(',').map(tag => tag.trim()) : []),
       status: 'pending'
     });
 
