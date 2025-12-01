@@ -12,18 +12,22 @@ const { htmlEscape } = require('./htmlEscape');
 
 const MIN_NEW_TOOL_EMAIL_COUNT = parseInt(process.env.MIN_NEW_TOOL_EMAIL_COUNT || '5', 10);
 
+// Defaults (your provided values)
+const DEFAULT_FRONTEND = 'https://myalltools.vercel.app';
+const DEFAULT_BACKEND = 'https://dashboard.render.com/web/srv-d101kj3ipnbc738dum80';
+
 // ENV-based config (set these in Render / Vercel)
 const resendApiKey = (process.env.RESEND_API_KEY || '').trim(); // <-- set your Resend API key here
 const emailFrom = (process.env.EMAIL_FROM || '').trim(); // <-- e.g. "AI Tools Hub <noreply@myalltools.shop>"
 const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER || emailFrom || '';
-const brandLogoUrl = process.env.EMAIL_LOGO_URL || `${process.env.BACKEND_URL || ''}/uploads/logo.png`;
+
+// Logo logic: Priority 1: Env Var, Priority 2: Hardcoded Cloudinary, Priority 3: Local Uploads Fallback
+const CLOUDINARY_LOGO = 'https://res.cloudinary.com/drwvqhof7/image/upload/v1764583720/Logo_rngsqz.png';
+const LOCAL_LOGO = `${process.env.BACKEND_URL || DEFAULT_BACKEND}/uploads/logo.png`;
+const brandLogoUrl = process.env.EMAIL_LOGO_URL || CLOUDINARY_LOGO || LOCAL_LOGO;
 
 // Cloudinary config (optional, used when using cloudinaryId or wanting to build URLs)
 const CLOUDINARY_CLOUD_NAME = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
-
-// Defaults (your provided values)
-const DEFAULT_FRONTEND = 'https://myalltools.vercel.app';
-const DEFAULT_BACKEND = 'https://dashboard.render.com/web/srv-d101kj3ipnbc738dum80';
 
 if (!resendApiKey) {
   console.warn('⚠️ RESEND_API_KEY is not set. Emails will fail until configured.');
@@ -83,16 +87,17 @@ const transformCloudinaryUrl = (
 
 /**
  * Choose the best image URL to use for a tool. Priority:
- * 1) tool.image (full URL). If cloudinary and size requested, inject transform.
+ * 1) tool.snapshotUrl (backend) or tool.image (frontend/legacy).
  * 2) tool.cloudinaryId + CLOUDINARY_CLOUD_NAME (buildCloudinaryUrl)
  * 3) null
  */
 const selectToolImage = (tool, { w, h, crop, gravity, q, f } = {}) => {
   if (!tool) return null;
 
-  // 1) explicit image URL (preferred)
-  if (tool.image && typeof tool.image === 'string' && tool.image.trim() !== '') {
-    const raw = tool.image.trim();
+  // Check snapshotUrl (backend) or image (frontend/legacy)
+  const raw = tool.snapshotUrl || tool.image;
+
+  if (raw && typeof raw === 'string' && raw.trim() !== '') {
     if ((w || h) && raw.includes('res.cloudinary.com')) {
       return transformCloudinaryUrl(raw, {
         w: w || 1200,
@@ -134,9 +139,15 @@ const sendEmail = async (mailOptions) => {
       throw new Error('Email FROM address not configured.');
     }
 
+    // Add emoji to sender name if not present
+    let fromAddress = mailOptions.from || emailFrom;
+    if (!fromAddress.includes('🚀') && fromAddress.includes('<')) {
+      fromAddress = fromAddress.replace('<', '🚀 <');
+    }
+
     const payload = {
       ...mailOptions,
-      from: mailOptions.from || emailFrom,
+      from: fromAddress,
     };
 
     console.log('📧 Sending via Resend:', { to: payload.to, subject: payload.subject, from: payload.from });
@@ -162,20 +173,21 @@ const COLORS = {
   primary: '#6366f1',
   primaryLight: '#a5b4fc',
   primaryDark: '#4f46e5',
-  accent: '#10b981',
-  accentLight: '#6ee7b7',
-  success: '#22c55e',
+  accent: '#8b5cf6', // Violet accent
+  accentLight: '#a78bfa',
+  success: '#10b981',
   warning: '#f59e0b',
   danger: '#ef4444',
-  bgLight: '#f8fafc',
+  bgLight: '#f3f4f6', // Slightly darker grey for contrast
   bgCard: '#ffffff',
-  border: '#e2e8f0',
-  borderLight: '#f1f5f9',
-  textPrimary: '#0f172a',
-  textSecondary: '#475569',
-  textMuted: '#64748b',
-  gradientStart: '#f0f9ff',
-  gradientEnd: '#faf5ff',
+  border: '#e5e7eb',
+  borderLight: '#f3f4f6',
+  textPrimary: '#111827',
+  textSecondary: '#4b5563',
+  textMuted: '#9ca3af',
+  gradientStart: '#e0e7ff', // Indigo 100
+  gradientEnd: '#ede9fe', // Violet 100
+  headerBg: '#1e1b4b', // Dark indigo for header
 };
 
 const addUtm = (rawUrl, { source = 'aitoolshub', medium = 'email', campaign = 'general' } = {}) => {
@@ -205,6 +217,8 @@ const createButton = (url, text, style = 'primary') => {
 const buildShell = ({ title, preheader = '', heroEmoji = '✨', bodyHtml, showFooterCta = true, unsubscribeUrl = null }) => {
   const siteUrl = process.env.FRONTEND_URL || DEFAULT_FRONTEND;
   const trackedSiteUrl = addUtm(siteUrl, { campaign: 'footer', medium: 'email-footer' });
+  // Robust unique ID using timestamp + random string to prevent Gmail threading/trimming
+  const uniqueId = Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8);
 
   return `
   <!DOCTYPE html>
@@ -214,88 +228,58 @@ const buildShell = ({ title, preheader = '', heroEmoji = '✨', bodyHtml, showFo
       <title>${title}</title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; margin:0; padding:0; background-color: ${COLORS.bgLight}; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
-        .email-wrapper { width: 100%; background-color: ${COLORS.bgLight}; }
-        .email-container { max-width: 600px; margin: 0 auto; }
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Outfit', 'Helvetica Neue', Helvetica, Arial, sans-serif; margin:0; padding:0; background-color: ${COLORS.bgLight}; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; color: ${COLORS.textPrimary}; }
+        .email-wrapper { width: 100%; background-color: ${COLORS.bgLight}; padding: 40px 0; }
+        .email-container { max-width: 600px; margin: 0 auto; background-color: ${COLORS.bgCard}; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px -10px rgba(0,0,0,0.1); }
+        .header { background-color: ${COLORS.headerBg}; padding: 32px; text-align: center; background-image: linear-gradient(135deg, ${COLORS.primaryDark} 0%, ${COLORS.accent} 100%); }
+        /* Simplified Logo Style for better compatibility */
+        .logo { width: 64px; height: 64px; margin: 0 auto; display: block; }
+        .logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 12px; display: block; }
+        .brand-name { color: #ffffff; font-size: 24px; font-weight: 700; margin-top: 16px; letter-spacing: -0.5px; }
+        .content { padding: 40px 32px; }
+        .footer { background-color: ${COLORS.bgLight}; padding: 32px; text-align: center; font-size: 12px; color: ${COLORS.textMuted}; border-top: 1px solid ${COLORS.border}; }
+        .footer a { color: ${COLORS.textSecondary}; text-decoration: underline; }
+        
         @media only screen and (max-width: 600px) {
-          .email-container { width: 100% !important; }
-          .mobile-padding { padding: 20px !important; }
-          .mobile-text { font-size: 14px !important; }
-          .mobile-heading { font-size: 24px !important; }
-          .mobile-button { display: block !important; width: 100% !important; text-align: center !important; margin: 8px 0 !important; }
-          .mobile-stack { display: block !important; width: 100% !important; }
-          .mobile-hide { display: none !important; }
+          .email-wrapper { padding: 0; }
+          .email-container { width: 100% !important; border-radius: 0; box-shadow: none; }
+          .content { padding: 24px 20px; }
+          .header { padding: 24px 20px; }
         }
-        a:hover { opacity: 0.85; }
       </style>
     </head>
     <body>
       <div style="display:none;max-height:0;overflow:hidden;color:transparent;opacity:0;font-size:1px;line-height:1px;mso-hide:all;">${preheader}</div>
-      <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:${COLORS.bgLight};min-height:100vh;">
-        <tr><td align="center" style="padding:20px 10px;">
-          <table class="email-container" width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:${COLORS.bgCard};border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.07), 0 0 0 1px ${COLORS.borderLight};">
-            <tr>
-              <td style="padding:0;background:linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);">
-                <table width="100%"><tr><td class="mobile-padding" style="padding:32px 28px;">
-                  <table width="100%"><tr>
-                    <td style="padding-right:12px;vertical-align:middle;width:64px;">
-                      <div style="width:56px;height:56px;border-radius:14px;background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);border:2px solid rgba(255,255,255,0.3);overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
-                        <img src="${brandLogoUrl}" alt="AI Tools Hub" style="width:100%;height:100%;object-fit:cover;display:block;" />
-                      </div>
-                    </td>
-                    <td style="vertical-align:middle;">
-                      <div style="font-size:20px;font-weight:700;color:#ffffff;margin:0 0 4px;letter-spacing:-0.3px;">AI Tools Hub</div>
-                      <div style="font-size:12px;color:rgba(255,255,255,0.95);font-weight:500;">Your premium AI resource hub</div>
-                    </td>
-                    <td align="right" style="font-size:40px;line-height:1;vertical-align:middle;padding-left:12px;" class="mobile-hide">
-                      <div style="text-shadow:0 2px 8px rgba(0,0,0,0.2);">${heroEmoji}</div>
-                    </td>
-                  </tr></table>
-                </td></tr></table>
-              </td>
-            </tr>
+      <div class="email-wrapper">
+        <div class="email-container">
+          <!-- Header -->
+          <div class="header">
+            <div class="logo">
+              <img src="${brandLogoUrl}" alt="AI Tools Hub" width="64" height="64" />
+            </div>
+            <div class="brand-name">AI Tools Hub</div>
+            <div style="color: rgba(255,255,255,0.8); font-size: 14px; margin-top: 4px;">Your Gateway to the Best AI Tools</div>
+          </div>
 
-            <tr>
-              <td class="mobile-padding" style="padding:36px 32px;color:${COLORS.textPrimary};background:${COLORS.bgCard};line-height:1.6;">
-                ${bodyHtml}
-              </td>
-            </tr>
+          <!-- Content -->
+          <div class="content">
+            ${bodyHtml}
+          </div>
 
-            ${showFooterCta
-      ? `<tr><td class="mobile-padding" style="padding:0 32px 16px;background:${COLORS.bgCard};">
-                    <div style="border-top:2px solid ${COLORS.borderLight};padding-top:24px;margin-bottom:12px;">
-                      <table width="100%"><tr><td style="padding:24px;background:linear-gradient(135deg, ${COLORS.gradientStart} 0%, ${COLORS.gradientEnd} 100%);border-radius:14px;border:1px solid ${COLORS.border};">
-                        <div style="font-size:16px;font-weight:600;color:${COLORS.textPrimary};margin:0 0 8px;">✨ Discover more AI tools</div>
-                        <div style="font-size:14px;color:${COLORS.textSecondary};margin:0 0 16px;line-height:1.6;">Browse our curated collection of cutting-edge AI tools and resources.</div>
-                        <a href="${trackedSiteUrl}" style="display:inline-block;background:linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryDark} 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:10px;box-shadow:0 2px 8px rgba(99, 102, 241, 0.3);" target="_blank" rel="noopener noreferrer">Explore Now →</a>
-                      </td></tr></table>
-                    </div>
-                  </td></tr>`
-      : ''
-    }
-
-            <tr>
-              <td class="mobile-padding" style="padding:24px 32px 32px;background:${COLORS.bgCard};">
-                <table width="100%"><tr>
-                  <td style="padding:20px;background:${COLORS.bgLight};border-radius:12px;border:1px solid ${COLORS.border};">
-                    <div style="font-size:12px;color:${COLORS.textMuted};line-height:1.7;text-align:center;">
-                      <strong style="color:${COLORS.textSecondary};">AI Tools Hub</strong> · Powered by myalltools.shop<br/>
-                      <span style="opacity:0.9;">You're receiving this because you used AI Tools Hub or subscribed to updates.</span>
-                      ${unsubscribeUrl ? `<br/><br/><a href="${addUtm(unsubscribeUrl, { campaign: 'unsubscribe', medium: 'email-footer' })}" style="color:${COLORS.textMuted};text-decoration:underline;font-size:11px;">Unsubscribe</a> from notifications` : ''}
-                    </div>
-                  </td>
-                </tr></table>
-
-                <div style="text-align:center;margin-top:16px;font-size:11px;color:${COLORS.textMuted};opacity:0.7;">
-                  © ${new Date().getFullYear()} AI Tools Hub. All rights reserved.
-                </div>
-              </td>
-            </tr>
-
-          </table>
-        </td></tr>
-      </table>
+          <!-- Footer -->
+          <div class="footer">
+            <p style="margin: 0 0 12px;">Sent with 💜 by AI Tools Hub</p>
+            <p style="margin: 0;">
+              ${unsubscribeUrl ? `<a href="${addUtm(unsubscribeUrl, { campaign: 'unsubscribe', medium: 'email-footer' })}">Unsubscribe</a> • ` : ''}
+              <a href="${trackedSiteUrl}">Visit Website</a>
+            </p>
+            <p style="margin: 12px 0 0; opacity: 0.6;">© ${new Date().getFullYear()} AI Tools Hub. All rights reserved.</p>
+            <!-- Visible unique ID to prevent Gmail threading/trimming -->
+            <p style="margin: 20px 0 0; font-size: 10px; opacity: 0.4;">Message ID: ${uniqueId}</p>
+          </div>
+        </div>
+      </div>
     </body>
   </html>
   `;
@@ -552,71 +536,59 @@ const emailTemplates = {
 
   newToolDigest: ({ recipientEmail, tools, unsubscribeUrl }) => {
     const loginURL = addUtm(`${process.env.FRONTEND_URL || DEFAULT_FRONTEND}/login`, { campaign: 'weekly-digest', medium: 'notification' });
-    const signupURL = addUtm(`${process.env.FRONTEND_URL || DEFAULT_FRONTEND}/signup`, { campaign: 'weekly-digest', medium: 'notification' });
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
     const items = (tools || []).map((t, index) => {
       const itemName = htmlEscape(t.name || 'Tool');
       const itemDesc = htmlEscape(t.description || '');
       const itemUrl = addUtm(htmlEscape(t.url || process.env.FRONTEND_URL || DEFAULT_FRONTEND), { campaign: 'digest-click', medium: 'notification' });
-      const icons = ['🎨', '🤖', '💡', '⚡', '🔮', '🎯', '🚀', '✨', '🌟', '💫'];
-      const icon = icons[index % icons.length];
-      const itemImg = selectToolImage(t, { w: 800, h: 400 }) || '';
-      const itemCardStyle = itemImg
-        ? `background:linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.86) 100%), url('${itemImg}') center/cover no-repeat;border-radius:14px;border:1px solid ${COLORS.border};box-shadow:0 2px 6px rgba(0,0,0,0.04);padding:20px;`
-        : `background:${COLORS.bgLight};padding:20px;border-radius:14px;border:1px solid ${COLORS.border};box-shadow:0 2px 6px rgba(0,0,0,0.04);`;
-      const itemImgTag = itemImg ? `<div style="margin:0 0 12px;"><img src="${itemImg}" alt="${itemName}" style="width:100%;height:auto;display:block;border-radius:12px;object-fit:cover;max-height:240px;" /></div>` : '';
+      const itemImg = selectToolImage(t, { w: 600, h: 300 });
+
       return `
-        <div style="margin:0 0 14px;${itemCardStyle}">
-          ${itemImgTag}
-          <table width="100%"><tr>
-            <td style="vertical-align:top;width:52px;padding-right:12px;">
-              <div style="width:44px;height:44px;background:linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryDark} 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(99,102,241,0.25);"><span style="font-size:22px;">${icon}</span></div>
-            </td>
-            <td style="vertical-align:top;">
-              <div style="font-size:16px;font-weight:700;color:${COLORS.textPrimary};margin:0 0 6px;line-height:1.3;">${itemName}</div>
-              <div style="font-size:13px;color:${COLORS.textSecondary};line-height:1.6;margin:0 0 14px;">${itemDesc.substring(0, 150)}${itemDesc.length > 150 ? '...' : ''}</div>
-              <a href="${itemUrl}" class="mobile-button" style="display:inline-block;background:linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryDark} 100%);color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 20px;border-radius:10px;box-shadow:0 2px 6px rgba(99,102,241,0.25);" target="_blank" rel="noopener noreferrer">Explore Tool →</a>
-            </td>
-          </tr></table>
-        </div>`;
+        <div style="margin-bottom: 24px; border: 1px solid ${COLORS.border}; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+          ${itemImg ? `<a href="${itemUrl}" style="display: block;"><img src="${itemImg}" alt="${itemName}" style="width: 100%; height: 200px; object-fit: cover; display: block;" /></a>` : ''}
+          <div style="padding: 20px;">
+            <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: ${COLORS.textPrimary};">
+              <a href="${itemUrl}" style="text-decoration: none; color: ${COLORS.textPrimary};">${itemName}</a>
+            </h3>
+            <p style="margin: 0 0 16px; font-size: 14px; color: ${COLORS.textSecondary}; line-height: 1.6;">${itemDesc.substring(0, 120)}${itemDesc.length > 120 ? '...' : ''}</p>
+            <a href="${itemUrl}" style="display: inline-block; padding: 10px 20px; background-color: ${COLORS.primary}; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 8px;">Explore Tool</a>
+          </div>
+        </div>
+      `;
     }).join('');
 
     const bodyHtml = `
-      <div style="margin-bottom:28px;text-align:center;">
-        <div style="display:inline-block;padding:7px 16px;background:linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.success} 100%);border-radius:24px;margin:0 0 16px;box-shadow:0 2px 8px rgba(16,185,129,0.25);">
-          <span style="font-size:12px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:1px;">📬 Your Weekly Digest</span>
+      <div style="text-align: center; margin-bottom: 32px;">
+        <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: ${COLORS.textMuted}; margin-bottom: 8px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        <h1 style="margin: 0 0 12px; font-size: 28px; font-weight: 700; color: ${COLORS.textPrimary};">Fresh AI Tools for You</h1>
+        <p style="margin: 0; font-size: 16px; color: ${COLORS.textSecondary};">We've curated ${tools.length} new AI tools this week to supercharge your workflow.</p>
+      </div>
+
+      <div style="margin-bottom: 32px;">
+        ${items}
+        <div style="text-align: center; padding-top: 16px;">
+           <div style="display: inline-block; width: 6px; height: 6px; background: ${COLORS.primaryLight}; border-radius: 50%; margin: 0 4px;"></div>
+           <div style="display: inline-block; width: 6px; height: 6px; background: ${COLORS.primary}; border-radius: 50%; margin: 0 4px;"></div>
+           <div style="display: inline-block; width: 6px; height: 6px; background: ${COLORS.primaryLight}; border-radius: 50%; margin: 0 4px;"></div>
+           <div style="margin-top: 8px; font-size: 13px; color: ${COLORS.textSecondary}; font-weight: 500;">And many more...</div>
         </div>
-        <h1 class="mobile-heading" style="margin:0 0 12px;font-size:30px;font-weight:700;color:${COLORS.textPrimary};">${tools.length} Fresh AI Tools<br/>Curated for You</h1>
-        <p class="mobile-text" style="margin:0;font-size:16px;color:${COLORS.textSecondary};line-height:1.7;max-width:480px;margin:0 auto;">Your personalized collection of the latest and most powerful AI tools added this week.</p>
       </div>
 
-      <div style="margin:0 0 28px;padding:20px;background:linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(139,92,246,0.1) 100%);border-radius:14px;border:1px solid ${COLORS.border};text-align:center;">
-        <div style="font-size:13px;color:${COLORS.textMuted};margin:0 0 6px;font-weight:600;">This Week's Collection</div>
-        <div style="font-size:36px;font-weight:700;color:${COLORS.textPrimary};line-height:1;margin:4px 0;">${tools.length}</div>
-        <div style="font-size:13px;color:${COLORS.textSecondary};margin:6px 0 0;">New AI Tools Added</div>
-      </div>
-
-      <div style="margin:0 0 28px;">${items}</div>
-
-      <div style="padding:28px 24px;background:linear-gradient(135deg, ${COLORS.gradientStart} 0%, rgba(16,185,129,0.1) 100%);border-radius:16px;border:2px solid ${COLORS.accent};text-align:center;box-shadow:0 4px 12px rgba(16,185,129,0.15);">
-        <div style="font-size:20px;font-weight:700;color:${COLORS.textPrimary};margin:0 0 10px;line-height:1.3;">🎯 Take Your Workflow to the Next Level</div>
-        <p style="margin:0 0 20px;font-size:14px;color:${COLORS.textSecondary};line-height:1.7;max-width:450px;margin-left:auto;margin-right:auto;">Create a free account to save your favorites, get smart recommendations tailored to your needs, and stay ahead of the curve.</p>
-        <div style="display:flex;gap:10px;justify-content:center">${createButton(signupURL, '🚀 Get Started Free', 'accent')}${createButton(loginURL, 'Log In', 'secondary')}</div>
-      </div>
-
-      <div style="margin:20px 0 0;padding:16px;background:${COLORS.bgLight};border-radius:12px;border:1px solid ${COLORS.border};text-align:center;">
-        <p style="margin:0;font-size:13px;color:${COLORS.textMuted};line-height:1.6;">💬 <strong style="color:${COLORS.textPrimary};">Have a tool suggestion?</strong> Reply to this email - we review every submission!</p>
+      <div style="text-align: center; padding: 32px; background: ${COLORS.gradientStart}; border-radius: 16px; border: 1px solid ${COLORS.primaryLight};">
+        <h3 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: ${COLORS.textPrimary};">Want more?</h3>
+        <p style="margin: 0 0 20px; font-size: 15px; color: ${COLORS.textSecondary};">Discover hundreds of other AI tools on our platform.</p>
+        ${createButton(loginURL, 'Browse All Tools', 'primary')}
       </div>
     `;
 
     return {
       from: emailFrom,
       to: recipientEmail,
-      subject: `✨ ${tools.length} New AI Tools Picked for You This Week`,
+      subject: `✨ ${tools.length} New AI Tools - ${dateStr}`,
       html: buildShell({
-        title: 'Your AI Tools Weekly Digest',
-        preheader: `Explore ${tools.length} handpicked AI tools added to AI Tools Hub this week.`,
-        heroEmoji: '📬',
+        title: 'Your AI Tools Digest',
+        preheader: `Check out ${tools.length} new AI tools added this week: ${tools.map(t => t.name).slice(0, 3).join(', ')}...`,
         bodyHtml,
         unsubscribeUrl,
       }),

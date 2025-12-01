@@ -7,7 +7,6 @@ const Tool = require('../models/Tool');
 const Subscriber = require('../models/Subscriber');
 const { sendNewToolEmail } = require('../utils/emailService');
 const User = require('../models/User');
-const { registerTool } = require('../utils/announcementQueue');
 const { auth, requireAdmin } = require('../middleware/auth');
 
 // Cloudinary setup (if configured, else fallback to local)
@@ -167,6 +166,8 @@ router.post('/submit', async (req, res) => {
   }
 });
 
+
+
 // POST /api/tools/:id/approve - approve a tool (admin only)
 router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
   try {
@@ -174,34 +175,11 @@ router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
     if (!tool) return res.status(404).json({ error: 'Tool not found' });
 
     tool.status = 'approved';
+    tool.approvedAt = new Date();
     await tool.save();
 
-    // Send email notifications
-    try {
-      if ((process.env.BATCH_SEND_ENABLED || 'true').toLowerCase() === 'true') {
-        registerTool(tool);
-        console.log(`Tool "${tool.name}" queued for digest announcement.`);
-      } else {
-        const [subscribers, users] = await Promise.all([
-          Subscriber.find({}, 'email unsubscribeToken isUnsubscribed lastSentAt'),
-          User.find({}, 'email')
-        ]);
-        const userEmailSet = new Set(users.map(u => u.email));
-        const targetSubscribers = subscribers.filter(s => !userEmailSet.has(s.email));
-        const recentTools = await Tool.find({ status: 'approved' })
-          .sort({ createdAt: -1 })
-          .limit(5)
-          .select('name description url');
-
-        await sendNewToolEmail(
-          { name: tool.name, description: tool.description, url: tool.url },
-          targetSubscribers,
-          recentTools
-        );
-      }
-    } catch (emailErr) {
-      console.error('Failed to send new tool announcement:', emailErr.message);
-    }
+    // Email notifications are now handled by the scheduler (utils/scheduler.js)
+    console.log(`Tool "${tool.name}" approved. Scheduled for digest.`);
 
     res.json({ message: 'Tool approved' });
   } catch (err) {

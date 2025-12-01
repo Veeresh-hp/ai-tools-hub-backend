@@ -1,7 +1,5 @@
 const mongoose = require('mongoose');
 
-
-
 const toolSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   shortDescription: { type: String, required: true, trim: true }, // Short summary for cards
@@ -11,8 +9,18 @@ const toolSchema = new mongoose.Schema({
   snapshotUrl: { type: String, required: true, trim: true }, // Image is now required
   hashtags: { type: [String], default: [] }, // Array of hashtags
   pricing: { type: String, enum: ['Free', 'Freemium', 'Paid', 'Open Source', 'Free Trial', 'Contact'], default: 'Freemium' }, // Pricing model
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
-  isAiToolsChoice: { type: Boolean, default: false },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
+  },
+  approvedAt: {
+    type: Date
+  },
+  isAiToolsChoice: {
+    type: Boolean,
+    default: false
+  },
   submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false }, // Optional - can be null for anonymous submissions
 }, { timestamps: true });
 

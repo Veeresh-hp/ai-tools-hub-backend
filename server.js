@@ -23,11 +23,14 @@ const newsletterRoutes = require('./routes/newsletter');
 const toolRoutes = require('./routes/tools');
 const categoryRoutes = require('./routes/categories');
 const { checkEnv } = require('./utils/envCheck');
-const { sendDailyNotification, sendWeeklyDigest } = require('./utils/toolNotificationService');
+const { initScheduler } = require('./utils/scheduler');
 const { sendEmail } = require('./utils/emailService');
 
 const app = express();
 checkEnv();
+
+// Initialize Scheduler
+initScheduler();
 
 // Ensure uploads directory exists (create if missing)
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -161,29 +164,8 @@ mongoose.connection.on('error', (err) => console.error('❌ Mongoose connection 
 mongoose.connection.on('disconnected', () => console.warn('⚠️ Mongoose disconnected from MongoDB'));
 
 // -------------------------
-// Cron jobs (notifications)
+// Cron jobs are handled by utils/scheduler.js
 // -------------------------
-cron.schedule('0 21 * * *', async () => {
-  console.log('⏰ Running daily notification check (9 PM)...');
-  try {
-    await sendDailyNotification();
-  } catch (error) {
-    console.error('❌ Daily notification cron failed:', error);
-  }
-}, { timezone: 'Asia/Kolkata' });
-
-cron.schedule('0 10 * * 1', async () => {
-  console.log('⏰ Running weekly digest (Monday 10 AM)...');
-  try {
-    await sendWeeklyDigest();
-  } catch (error) {
-    console.error('❌ Weekly digest cron failed:', error);
-  }
-}, { timezone: 'Asia/Kolkata' });
-
-console.log('📅 Cron jobs initialized:');
-console.log('  - Daily check: Every day at 9:00 PM (sends if 5+ tools)');
-console.log('  - Weekly digest: Every Monday at 10:00 AM');
 
 // -------------------------
 // Test email route (helpful hints & DEV override)
