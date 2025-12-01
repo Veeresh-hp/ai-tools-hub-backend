@@ -46,18 +46,29 @@ async function sendDigest(tools) {
   const targetSubs = subs.filter(s => !userEmailSet.has(s.email));
 
   const backendBase = process.env.BACKEND_URL || process.env.FRONTEND_URL || '';
-  const jobs = targetSubs.map(sub => {
+
+  // Send sequentially with delay to respect rate limits
+  const DELAY_MS = 800;
+
+  for (const sub of targetSubs) {
     const unsubscribeUrl = `${backendBase}/api/newsletter/unsubscribe/${sub.unsubscribeToken}`;
     const mail = emailTemplates.newToolDigest({
       recipientEmail: sub.email,
       tools: tools.slice(0, 10),
       unsubscribeUrl
     });
-    return sendEmail(mail)
-      .then(() => Subscriber.updateOne({ _id: sub._id }, { $set: { lastSentAt: new Date() } }))
-      .catch(err => console.error('Digest email failed for', sub.email, err.message));
-  });
-  await Promise.all(jobs);
+
+    try {
+      await sendEmail(mail);
+      await Subscriber.updateOne({ _id: sub._id }, { $set: { lastSentAt: new Date() } });
+    } catch (err) {
+      console.error('Digest email failed for', sub.email, err.message);
+    }
+
+    // Wait before next request
+    await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+  }
+
   console.log(`✅ Sent digest with ${tools.length} tools to ${targetSubs.length} subscribers`);
 }
 

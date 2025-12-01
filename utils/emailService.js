@@ -197,7 +197,7 @@ const createButton = (url, text, style = 'primary') => {
     secondary: { bg: COLORS.bgCard, color: COLORS.textPrimary, shadow: '0 2px 8px 0 rgba(0,0,0,0.1)', border: `1px solid ${COLORS.border}` },
   };
   const btnStyle = styles[style] || styles.primary;
-  return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:${btnStyle.bg};color:${btnStyle.color};font-size:15px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;box-shadow:${btnStyle.shadow};${btnStyle.border?`border:${btnStyle.border};`:''}transition:all 0.3s ease;font-family:inherit;letter-spacing:0.3px;">${text}</a>`;
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:${btnStyle.bg};color:${btnStyle.color};font-size:15px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;box-shadow:${btnStyle.shadow};${btnStyle.border ? `border:${btnStyle.border};` : ''}transition:all 0.3s ease;font-family:inherit;letter-spacing:0.3px;">${text}</a>`;
 };
 
 /* ---------------- Email Shell ---------------- */
@@ -262,9 +262,8 @@ const buildShell = ({ title, preheader = '', heroEmoji = '✨', bodyHtml, showFo
               </td>
             </tr>
 
-            ${
-              showFooterCta
-                ? `<tr><td class="mobile-padding" style="padding:0 32px 16px;background:${COLORS.bgCard};">
+            ${showFooterCta
+      ? `<tr><td class="mobile-padding" style="padding:0 32px 16px;background:${COLORS.bgCard};">
                     <div style="border-top:2px solid ${COLORS.borderLight};padding-top:24px;margin-bottom:12px;">
                       <table width="100%"><tr><td style="padding:24px;background:linear-gradient(135deg, ${COLORS.gradientStart} 0%, ${COLORS.gradientEnd} 100%);border-radius:14px;border:1px solid ${COLORS.border};">
                         <div style="font-size:16px;font-weight:600;color:${COLORS.textPrimary};margin:0 0 8px;">✨ Discover more AI tools</div>
@@ -273,8 +272,8 @@ const buildShell = ({ title, preheader = '', heroEmoji = '✨', bodyHtml, showFo
                       </td></tr></table>
                     </div>
                   </td></tr>`
-                : ''
-            }
+      : ''
+    }
 
             <tr>
               <td class="mobile-padding" style="padding:24px 32px 32px;background:${COLORS.bgCard};">
@@ -559,7 +558,7 @@ const emailTemplates = {
       const itemName = htmlEscape(t.name || 'Tool');
       const itemDesc = htmlEscape(t.description || '');
       const itemUrl = addUtm(htmlEscape(t.url || process.env.FRONTEND_URL || DEFAULT_FRONTEND), { campaign: 'digest-click', medium: 'notification' });
-      const icons = ['🎨','🤖','💡','⚡','🔮','🎯','🚀','✨','🌟','💫'];
+      const icons = ['🎨', '🤖', '💡', '⚡', '🔮', '🎯', '🚀', '✨', '🌟', '💫'];
       const icon = icons[index % icons.length];
       const itemImg = selectToolImage(t, { w: 800, h: 400 }) || '';
       const itemCardStyle = itemImg
@@ -575,7 +574,7 @@ const emailTemplates = {
             </td>
             <td style="vertical-align:top;">
               <div style="font-size:16px;font-weight:700;color:${COLORS.textPrimary};margin:0 0 6px;line-height:1.3;">${itemName}</div>
-              <div style="font-size:13px;color:${COLORS.textSecondary};line-height:1.6;margin:0 0 14px;">${itemDesc.substring(0,150)}${itemDesc.length>150?'...':''}</div>
+              <div style="font-size:13px;color:${COLORS.textSecondary};line-height:1.6;margin:0 0 14px;">${itemDesc.substring(0, 150)}${itemDesc.length > 150 ? '...' : ''}</div>
               <a href="${itemUrl}" class="mobile-button" style="display:inline-block;background:linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryDark} 100%);color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 20px;border-radius:10px;box-shadow:0 2px 6px rgba(99,102,241,0.25);" target="_blank" rel="noopener noreferrer">Explore Tool →</a>
             </td>
           </tr></table>
@@ -646,44 +645,31 @@ const sendNewToolEmail = async (tool, subscribers, recentTools = []) => {
     if (s && s.email && !uniqueByEmail.has(s.email)) uniqueByEmail.set(s.email, s);
   }
 
-  // chunked sending helper to avoid huge parallel spikes (optional improvement)
-  const BATCH_SIZE = parseInt(process.env.EMAIL_BATCH_SIZE || '200', 10); // default: 200 per batch
+  // Send sequentially to respect rate limits (2 req/sec)
+  const DELAY_MS = 800;
   const emails = [...uniqueByEmail.keys()];
 
-  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-    const batch = emails.slice(i, i + BATCH_SIZE);
-    const jobs = [];
+  for (const email of emails) {
+    const sDoc = uniqueByEmail.get(email);
+    if (!sDoc || sDoc.isUnsubscribed) continue;
 
-    for (const email of batch) {
-      const sDoc = uniqueByEmail.get(email);
-      if (!sDoc || sDoc.isUnsubscribed) continue;
+    const unsubscribeUrl = `${backendBase}/api/newsletter/unsubscribe/${sDoc.unsubscribeToken}`;
+    const mail = emailTemplates.newToolAnnouncement({
+      recipientEmail: email,
+      tool,
+      recentTools: recentTools.slice(0, 5),
+      unsubscribeUrl,
+    });
 
-      const unsubscribeUrl = `${backendBase}/api/newsletter/unsubscribe/${sDoc.unsubscribeToken}`;
-      const mail = emailTemplates.newToolAnnouncement({
-        recipientEmail: email,
-        tool,
-        recentTools: recentTools.slice(0, 5),
-        unsubscribeUrl,
-      });
-
-      jobs.push(
-        sendEmail(mail)
-          .then(async () => {
-            try {
-              await Subscriber.updateOne({ _id: sDoc._id }, { $set: { lastSentAt: new Date() } });
-            } catch (e) {
-              console.error('Failed to update lastSentAt for', email, e.message);
-            }
-          })
-          .catch((err) => {
-            console.error(`Failed to send new tool email to ${email}:`, err.message);
-          })
-      );
+    try {
+      await sendEmail(mail);
+      await Subscriber.updateOne({ _id: sDoc._id }, { $set: { lastSentAt: new Date() } });
+    } catch (err) {
+      console.error(`Failed to send new tool email to ${email}:`, err.message);
     }
 
-    // wait for this batch to finish before proceeding to the next (keeps load reasonable)
-    await Promise.all(jobs);
-    // small pause between batches could be added here if desired (rate-limiting)
+    // Wait before next request
+    await new Promise(resolve => setTimeout(resolve, DELAY_MS));
   }
 };
 
