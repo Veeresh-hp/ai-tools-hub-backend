@@ -22,6 +22,7 @@ const contactRoutes = require('./routes/contact');
 const newsletterRoutes = require('./routes/newsletter');
 const toolRoutes = require('./routes/tools');
 const categoryRoutes = require('./routes/categories');
+const adminRoutes = require('./routes/adminRoutes'); // New admin routes
 const { checkEnv } = require('./utils/envCheck');
 const { initScheduler } = require('./utils/scheduler');
 const { sendEmail } = require('./utils/emailService');
@@ -127,6 +128,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/', (req, res) => {

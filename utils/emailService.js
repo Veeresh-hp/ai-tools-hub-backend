@@ -22,9 +22,10 @@ const emailFrom = (process.env.EMAIL_FROM || '').trim(); // <-- e.g. "AI Tools H
 const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER || emailFrom || '';
 
 // Logo logic: Priority 1: Env Var, Priority 2: Hardcoded Cloudinary, Priority 3: Local Uploads Fallback
-const CLOUDINARY_LOGO = 'https://res.cloudinary.com/drwvqhof7/image/upload/v1764583720/Logo_rngsqz.png';
-const LOCAL_LOGO = `${process.env.BACKEND_URL || DEFAULT_BACKEND}/uploads/logo.png`;
-const brandLogoUrl = process.env.EMAIL_LOGO_URL || CLOUDINARY_LOGO || LOCAL_LOGO;
+// Logo logic: Priority 1: Env Var, Priority 2: Valid Cloudinary, Priority 3: Frontend Public URL
+const CLOUDINARY_LOGO = 'https://res.cloudinary.com/drwvqhof7/image/upload/v1764583720/Logo_rngsqz.png'; // Replace with actual valid ID if known
+const FRONTEND_LOGO = 'https://myalltools.vercel.app/logo.png'; // Assumes logo.png is in public/ of frontend
+const brandLogoUrl = process.env.EMAIL_LOGO_URL || FRONTEND_LOGO;
 
 // Cloudinary config (optional, used when using cloudinaryId or wanting to build URLs)
 const CLOUDINARY_CLOUD_NAME = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
