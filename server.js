@@ -59,7 +59,8 @@ const allowedOrigins = [
   'https://ai-alltools.vercel.app',
   'https://myalltools.vercel.app',
   'https://ai-tools-seven-jet.vercel.app',
-  'http://localhost:3000'
+  'http://localhost:3000',
+  'http://localhost:3001'
 ];
 
 app.use(cors({
