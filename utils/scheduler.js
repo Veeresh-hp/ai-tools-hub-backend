@@ -35,6 +35,26 @@ const sendDigest = async (tools, title) => {
 
     const targetList = Array.from(recipients.values());
 
+    // Log the notification to prevent duplicates and track history
+    // Infer type from title
+    const type = title.toLowerCase().includes('weekly') ? 'weekly' : 'daily';
+    const ToolNotification = require('../models/ToolNotification');
+    
+    try {
+         await ToolNotification.create({
+            type,
+            toolCount: tools.length,
+            toolIds: tools.map(t => t._id),
+            recipientCount: targetList.length,
+            status: 'completed',
+            sentAt: new Date()
+        });
+    } catch (dbErr) {
+        console.error('⚠️ Failed to save ToolNotification record:', dbErr.message);
+        // Continue sending email even if DB log fails? 
+        // Better to record it.
+    }
+
     const backendBase = process.env.BACKEND_URL || process.env.FRONTEND_URL || '';
     const frontendBase = process.env.FRONTEND_URL || 'https://myalltools.vercel.app';
     const DELAY_MS = 800; // Rate limit delay
@@ -77,24 +97,7 @@ const initScheduler = () => {
     // Daily Digest at 9 PM IST (21:00 Asia/Kolkata)
     cron.schedule('0 21 * * *', async () => {
         console.log('⏰ Running Daily Digest Job (IST)...');
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-
-        try {
-            const tools = await Tool.find({
-                status: 'approved',
-                approvedAt: { $gte: startOfDay }
-            }).sort({ approvedAt: -1 });
-
-            // Lowered threshold to 1 for better engagement
-            if (tools.length >= 1) {
-                await sendDigest(tools, 'Daily Digest');
-            } else {
-                console.log(`ℹ️ Daily digest skipped: ${tools.length} tools (min 1 required)`);
-            }
-        } catch (err) {
-            console.error('❌ Daily digest job failed:', err.message);
-        }
+        await runDailyDigest();
     }, {
         scheduled: true,
         timezone: "Asia/Kolkata"
@@ -124,6 +127,81 @@ const initScheduler = () => {
         scheduled: true,
         timezone: "Asia/Kolkata"
     });
+
+    // --- CATCH-UP LOGIC ---
+    // Check if we missed the daily digest (e.g., server was sleeping at 9 PM)
+    checkMissedDailyDigest();
+};
+
+const runDailyDigest = async () => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    try {
+        const tools = await Tool.find({
+            status: 'approved',
+            approvedAt: { $gte: startOfDay }
+        }).sort({ approvedAt: -1 });
+
+        // Lowered threshold to 1 for better engagement
+        if (tools.length >= 1) {
+            await sendDigest(tools, 'Daily Digest');
+        } else {
+            console.log(`ℹ️ Daily digest skipped: ${tools.length} tools (min 1 required)`);
+        }
+    } catch (err) {
+        console.error('❌ Daily digest job failed:', err.message);
+    }
+};
+
+const checkMissedDailyDigest = async () => {
+    // Current time in IST
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + istOffset); // Approximation for logic check
+    
+    // Check if it's past 9 PM IST and before midnight?
+    // Actually, simpler: Check if we have sent a digest TODAY.
+    // If not, and it is past 21:00 UTC+5:30, send it.
+    
+    // We rely on the "ToolNotification" model to check uniqueness.
+    // But sendDigest doesn't automatically check ToolNotification, it just sends.
+    // Wait, sendDigest blindly sends. 
+    // We should look at ToolNotification to see if we ran today.
+    // The previous implementation of sendDailyNotification (in toolNotificationService) did this check.
+    // My new simple scheduler.js DOES NOT check ToolNotification history for duplicate prevention, 
+    // it relies on cron timing.
+    // I should fix that to be robust.
+
+    // Let's import ToolNotification to check history. (Lazy import to avoid circular dep if any, though unlikely)
+    const ToolNotification = require('../models/ToolNotification');
+    
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const alreadySent = await ToolNotification.exists({
+        type: 'daily',
+        sentAt: { $gte: startOfDay }
+    });
+
+    if (alreadySent) {
+        console.log('✅ Daily digest already sent today.');
+        return;
+    }
+
+    // Convert to IST hours to see if we should have sent it
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        hour12: false
+    });
+    const currentHourIST = parseInt(formatter.format(now), 10);
+    
+    // If it's 21:00 or later (9 PM), and we haven't sent it, do it now.
+    if (currentHourIST >= 21) {
+        console.log(`⚠️ Late detected (Past 9 PM IST). Checking for missed daily digest...`);
+        await runDailyDigest();
+    }
 };
 
 module.exports = { initScheduler, sendDigest };

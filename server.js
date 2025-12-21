@@ -39,13 +39,6 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// -------------------------
-// DEV / DEBUG: path to uploaded preview image you provided
-// (This is the local path to the image you uploaded in the chat UI)
-// You can use this for local testing, but in production always use an HTTPS URL or EMAIL_LOGO_URL env var.
-const DEV_UPLOADED_PREVIEW_IMAGE = '/mnt/data/c5f7f900-1f71-4392-ab86-dc5f6ceedddb.png';
-// -------------------------
-
 // Trust proxy (useful on Render/proxy hosting)
 app.set('trust proxy', 1);
 
@@ -211,5 +204,5 @@ app.listen(PORT, () => {
   // Helpful runtime hints
   console.log('ENV HINTS:');
   console.log(`  BACKEND_URL=${process.env.BACKEND_URL || '(not set)'}`);
-  console.log(`  EMAIL_LOGO_URL=${process.env.EMAIL_LOGO_URL || '(not set)'} (dev preview path available in code: ${DEV_UPLOADED_PREVIEW_IMAGE})`);
+  console.log(`  EMAIL_LOGO_URL=${process.env.EMAIL_LOGO_URL || '(not set)'}`);
 });
