@@ -52,6 +52,8 @@ const allowedOrigins = [
   'https://ai-alltools.vercel.app',
   'https://myalltools.vercel.app',
   'https://ai-tools-seven-jet.vercel.app',
+  'https://www.myalltools.shop',
+  'https://myalltools.shop',
   'http://localhost:3000',
   'http://localhost:3001'
 ];
