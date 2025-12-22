@@ -19,7 +19,7 @@ const DEFAULT_BACKEND = 'https://dashboard.render.com/web/srv-d101kj3ipnbc738dum
 // ENV-based config (set these in Render / Vercel)
 const resendApiKey = (process.env.RESEND_API_KEY || '').trim(); // <-- set your Resend API key here
 const emailFrom = (process.env.EMAIL_FROM || '').trim(); // <-- e.g. "AI Tools Hub <noreply@myalltools.shop>"
-const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER || emailFrom || '';
+const adminEmail = 'aitoolshub2@gmail.com'; // Hardcoded as per request to ensure it goes here instead of env var
 
 // Logo logic: Priority 1: Env Var, Priority 2: Hardcoded Cloudinary, Priority 3: Local Uploads Fallback
 // Logo logic: Priority 1: Env Var, Priority 2: Valid Cloudinary, Priority 3: Frontend Public URL
@@ -378,10 +378,12 @@ const emailTemplates = {
     return { from: emailFrom, to: recipientEmail, subject: '✅ Your AI Tools Hub Password Was Changed', html: buildShell({ title: 'Password Changed Successfully', preheader: 'This is a confirmation that your AI Tools Hub password was successfully updated.', heroEmoji: '✅', bodyHtml, showFooterCta: false }) };
   },
 
-  contactForm: (name, email, message) => {
+  contactForm: (name, email, message, interest) => {
     const safeName = htmlEscape(name || 'Unknown');
     const safeEmail = htmlEscape(email || '');
     const safeMsg = htmlEscape(message || '');
+    const safeInterest = htmlEscape(interest || 'General Inquiry');
+
     const bodyHtml = `
       <div style="margin-bottom:24px;">
         <h1 class="mobile-heading" style="margin:0 0 12px;font-size:24px;font-weight:700;color:${COLORS.textPrimary};">💬 New Contact Message</h1>
@@ -392,6 +394,10 @@ const emailTemplates = {
           <div style="font-size:12px;color:${COLORS.textMuted};margin:0 0 6px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">From</div>
           <div style="font-size:16px;font-weight:600;color:${COLORS.textPrimary};margin:0 0 4px;">${safeName}</div>
           <a href="mailto:${safeEmail}" style="font-size:14px;color:${COLORS.primary};text-decoration:none;">${safeEmail}</a>
+        </div>
+        <div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid ${COLORS.border};">
+           <div style="font-size:12px;color:${COLORS.textMuted};margin:0 0 6px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Interest</div>
+           <div style="font-size:15px;color:${COLORS.textPrimary};font-weight:500;">${safeInterest}</div>
         </div>
         <div><div style="font-size:12px;color:${COLORS.textMuted};margin:0 0 10px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Message</div>
           <div style="padding:16px;background:${COLORS.bgCard};border-radius:10px;border-left:3px solid ${COLORS.primary};"><p style="margin:0;font-size:14px;color:${COLORS.textSecondary};line-height:1.7;white-space:pre-wrap;">${safeMsg}</p></div>

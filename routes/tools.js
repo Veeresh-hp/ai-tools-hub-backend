@@ -11,21 +11,22 @@ const { auth, requireAdmin } = require('../middleware/auth');
 
 // Cloudinary setup (if configured, else fallback to local)
 let upload;
+let cloudinaryV2;
 let hasCloudinary = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
 
 if (hasCloudinary) {
   try {
-    const cloudinary = require('cloudinary').v2;
+    cloudinaryV2 = require('cloudinary').v2;
     const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
-    cloudinary.config({
+    cloudinaryV2.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET
     });
 
     const cloudinaryStorage = new CloudinaryStorage({
-      cloudinary: cloudinary,
+      cloudinary: cloudinaryV2,
       params: {
         folder: 'ai-tools-snapshots',
         allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
@@ -144,6 +145,21 @@ router.post('/submit', async (req, res) => {
   try {
     const { name, shortDescription, description, url, category, pricing, snapshotUrl, hashtags } = req.body;
 
+    // Check for duplicates (Name or URL)
+    const existingTool = await Tool.findOne({
+      $or: [
+        { name: { $regex: new RegExp(`^${name.trim()}$`, 'i') } },
+        { url: url.trim() }
+      ]
+    });
+
+    if (existingTool) {
+      return res.status(409).json({ 
+        error: 'Duplicate Tool',
+        message: `A tool with this name or URL already exists (Status: ${existingTool.status}).`
+      });
+    }
+
     const newTool = new Tool({
       name,
       shortDescription,
@@ -193,6 +209,42 @@ router.post('/:id/reject', auth, requireAdmin, async (req, res) => {
   try {
     const tool = await Tool.findById(req.params.id);
     if (!tool) return res.status(404).json({ error: 'Tool not found' });
+
+    // Move image to 'rejected' folder on Cloudinary if applicable
+    if (hasCloudinary && cloudinaryV2 && tool.snapshotUrl && tool.snapshotUrl.includes('res.cloudinary.com')) {
+      try {
+        // Extract public ID from URL
+        // Example: https://res.cloudinary.com/cloudname/image/upload/v12345/ai-tools-snapshots/filename.jpg
+        // Public ID: ai-tools-snapshots/filename
+        const parts = tool.snapshotUrl.split('/upload/');
+        if (parts.length > 1) {
+          const versionAndPath = parts[1];
+          // Remove version (v12345/) if present
+          const pathOnly = versionAndPath.replace(/^v\d+\//, '');
+          // Remove extension
+          const publicId = pathOnly.split('.').slice(0, -1).join('.');
+          
+          // Only move if it's in the snapshots folder
+          if (publicId.startsWith('ai-tools-snapshots/')) {
+             const newPublicId = publicId.replace('ai-tools-snapshots/', 'ai-tools-rejected/');
+             
+             await cloudinaryV2.uploader.rename(publicId, newPublicId, { overwrite: true });
+             console.log(`✅ Moved rejected image to: ${newPublicId}`);
+             
+             // Update URL in DB to point to new location (optional, but good for history)
+             // We can construct the new URL based on the old one, just swapping the ID
+             // But simpler is just to let it break or update it. 
+             // Let's rely on Cloudinary's response or just construct it.
+             // Actually, the URL structure remains similar.
+             tool.snapshotUrl = tool.snapshotUrl.replace('ai-tools-snapshots', 'ai-tools-rejected');
+          }
+        }
+      } catch (cloudErr) {
+        console.error('⚠️ Failed to move rejected image on Cloudinary:', cloudErr.message);
+        // Don't fail the rejection just because image move failed
+      }
+    }
+
     tool.status = 'rejected';
     await tool.save();
     res.json({ message: 'Tool rejected' });

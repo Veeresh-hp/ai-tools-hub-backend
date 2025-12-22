@@ -7,7 +7,6 @@
 // (If you want to use this in production emails, replace with a public HTTPS URL or set EMAIL_LOGO_URL)
 
 require('dotenv').config();
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -24,14 +23,16 @@ const toolRoutes = require('./routes/tools');
 const categoryRoutes = require('./routes/categories');
 const adminRoutes = require('./routes/adminRoutes'); // New admin routes
 const { checkEnv } = require('./utils/envCheck');
-const { initScheduler } = require('./utils/scheduler');
+const { initScheduler } = require('./utils/scheduler'); // Email scheduler
+const { initNewsScheduler } = require('./utils/newsScheduler'); // Blog scheduler
 const { sendEmail } = require('./utils/emailService');
 
 const app = express();
 checkEnv();
 
-// Initialize Scheduler
+// Initialize Schedulers
 initScheduler();
+initNewsScheduler();
 
 // Ensure uploads directory exists (create if missing)
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -122,6 +123,8 @@ app.use('/uploads', express.static(uploadsDir, {
 app.use('/api/tools', toolRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/reviews', require('./routes/reviews'));
+app.use('/api/articles', require('./routes/articles'));
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/admin', adminRoutes);
@@ -139,8 +142,8 @@ mongoose.connect(process.env.MONGO_URI, {
   serverSelectionTimeoutMS: 10000,
   socketTimeoutMS: 45000,
   connectTimeoutMS: 10000,
+  connectTimeoutMS: 10000,
   retryWrites: true,
-  w: 'majority',
 })
   .then(() => console.log('✅ Connected to MongoDB Atlas'))
   .catch((err) => {

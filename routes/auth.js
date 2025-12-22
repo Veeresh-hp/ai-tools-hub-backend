@@ -263,7 +263,7 @@ router.post('/google-login', async (req, res) => {
       return res.status(400).json({ error: 'Google email not verified' });
     }
 
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: email.toLowerCase() });
     let isNewUser = false; // Flag to track if a new user is created
 
     if (user) {
