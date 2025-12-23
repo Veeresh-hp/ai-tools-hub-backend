@@ -28,7 +28,7 @@ if (hasCloudinary) {
     const cloudinaryStorage = new CloudinaryStorage({
       cloudinary: cloudinaryV2,
       params: {
-        folder: 'ai-tools-snapshots',
+        folder: 'ai-tools-pending', // Store in pending folder initially
         allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
         transformation: [{ width: 800, height: 600, crop: 'limit' }]
       }
@@ -190,6 +190,32 @@ router.post('/:id/approve', auth, requireAdmin, async (req, res) => {
     const tool = await Tool.findById(req.params.id);
     if (!tool) return res.status(404).json({ error: 'Tool not found' });
 
+    // Move image from 'pending' to 'snapshots' on Cloudinary if it exists there
+    if (hasCloudinary && cloudinaryV2 && tool.snapshotUrl && tool.snapshotUrl.includes('ai-tools-pending')) {
+      try {
+        // Extract public ID from URL
+        // Example: .../upload/v123/ai-tools-pending/filename.jpg
+        const parts = tool.snapshotUrl.split('/upload/');
+        if (parts.length > 1) {
+             const versionAndPath = parts[1];
+             const pathOnly = versionAndPath.replace(/^v\d+\//, ''); // Remove version prefix
+             const publicId = pathOnly.split('.').slice(0, -1).join('.'); // Remove extension
+             
+             if (publicId.startsWith('ai-tools-pending/')) {
+                 const newPublicId = publicId.replace('ai-tools-pending/', 'ai-tools-snapshots/');
+                 
+                 await cloudinaryV2.uploader.rename(publicId, newPublicId, { overwrite: true });
+                 console.log(`✅ Moved approved image to: ${newPublicId}`);
+                 
+                 // Update URL to point to snapshots
+                 tool.snapshotUrl = tool.snapshotUrl.replace('ai-tools-pending', 'ai-tools-snapshots');
+             }
+        }
+      } catch (cloudErr) {
+          console.error('⚠️ Failed to move approved image on Cloudinary:', cloudErr.message);
+      }
+    }
+
     tool.status = 'approved';
     tool.approvedAt = new Date();
     await tool.save();
@@ -211,39 +237,21 @@ router.post('/:id/reject', auth, requireAdmin, async (req, res) => {
     if (!tool) return res.status(404).json({ error: 'Tool not found' });
 
     // Move image to 'rejected' folder on Cloudinary if applicable
+    // User requested to keep images in pending folder if not approved ("otherwise keep in that folder only").
+    // So we comment out the move-to-rejected logic for now.
+    /*
     if (hasCloudinary && cloudinaryV2 && tool.snapshotUrl && tool.snapshotUrl.includes('res.cloudinary.com')) {
       try {
-        // Extract public ID from URL
-        // Example: https://res.cloudinary.com/cloudname/image/upload/v12345/ai-tools-snapshots/filename.jpg
-        // Public ID: ai-tools-snapshots/filename
-        const parts = tool.snapshotUrl.split('/upload/');
-        if (parts.length > 1) {
-          const versionAndPath = parts[1];
-          // Remove version (v12345/) if present
-          const pathOnly = versionAndPath.replace(/^v\d+\//, '');
-          // Remove extension
-          const publicId = pathOnly.split('.').slice(0, -1).join('.');
-          
-          // Only move if it's in the snapshots folder
+        // ... (existing move logic) ...
           if (publicId.startsWith('ai-tools-snapshots/')) {
              const newPublicId = publicId.replace('ai-tools-snapshots/', 'ai-tools-rejected/');
-             
              await cloudinaryV2.uploader.rename(publicId, newPublicId, { overwrite: true });
-             console.log(`✅ Moved rejected image to: ${newPublicId}`);
-             
-             // Update URL in DB to point to new location (optional, but good for history)
-             // We can construct the new URL based on the old one, just swapping the ID
-             // But simpler is just to let it break or update it. 
-             // Let's rely on Cloudinary's response or just construct it.
-             // Actually, the URL structure remains similar.
+             // ...
              tool.snapshotUrl = tool.snapshotUrl.replace('ai-tools-snapshots', 'ai-tools-rejected');
           }
-        }
-      } catch (cloudErr) {
-        console.error('⚠️ Failed to move rejected image on Cloudinary:', cloudErr.message);
-        // Don't fail the rejection just because image move failed
-      }
+      } catch (cloudErr) { ... }
     }
+    */
 
     tool.status = 'rejected';
     await tool.save();
@@ -280,6 +288,39 @@ router.post('/notify-add', auth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to notify subscribers:', error);
     res.status(500).json({ message: 'Failed to notify subscribers.' });
+  }
+});
+
+// PUT /api/tools/:id/edit - update a tool (admin only)
+router.put('/:id/edit', auth, requireAdmin, async (req, res) => {
+  try {
+    const { name, shortDescription, description, url, category, pricing, snapshotUrl, hashtags, isAiToolsChoice } = req.body;
+    
+    const tool = await Tool.findById(req.params.id);
+    if (!tool) return res.status(404).json({ error: 'Tool not found' });
+
+    // Update fields
+    if (name) tool.name = name;
+    if (shortDescription !== undefined) tool.shortDescription = shortDescription;
+    if (description) tool.description = description;
+    if (url) tool.url = url;
+    if (category) tool.category = category;
+    if (pricing) tool.pricing = pricing;
+    if (snapshotUrl) tool.snapshotUrl = snapshotUrl;
+    if (isAiToolsChoice !== undefined) tool.isAiToolsChoice = isAiToolsChoice;
+
+    if (hashtags) {
+        tool.hashtags = Array.isArray(hashtags)
+        ? hashtags.map(tag => tag.trim())
+        : hashtags.split(',').map(tag => tag.trim());
+    }
+
+    await tool.save();
+    console.log(`Tool "${tool.name}" updated by admin.`);
+    res.json({ message: 'Tool updated successfully', tool });
+  } catch (err) {
+    console.error('Update tool error:', err.message);
+    res.status(500).json({ error: 'Failed to update tool' });
   }
 });
 

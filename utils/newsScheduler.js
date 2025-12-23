@@ -41,9 +41,14 @@ const fetchAndStoreNews = async () => {
                 tags: ['AI News', 'Tech', 'Automation'] // Basic tagging
             };
 
-            // Upsert: Find by URL, update if exists, insert if not
+            // Upsert: Check for existing article by URL OR Title to prevent duplicates
             const result = await Article.updateOne(
-                { sourceUrl: article.url },
+                { 
+                    $or: [
+                        { sourceUrl: article.url },
+                        { title: article.title }
+                    ]
+                },
                 { $setOnInsert: articleData }, // Only set on insert to preserve existing data/edits
                 { upsert: true }
             );
