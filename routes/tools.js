@@ -340,4 +340,20 @@ router.put('/:id/toggle-choice', auth, requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/tools/tool-of-the-day - get a random approved tool
+router.get('/tool-of-the-day', async (req, res) => {
+  try {
+    const count = await Tool.countDocuments({ status: 'approved' });
+    if (count === 0) {
+      return res.status(404).json({ error: 'No approved tools found' });
+    }
+    const random = Math.floor(Math.random() * count);
+    const tool = await Tool.findOne({ status: 'approved' }).skip(random);
+    res.json(tool);
+  } catch (err) {
+    console.error('Tool of the day error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch tool of the day' });
+  }
+});
+
 module.exports = router;
