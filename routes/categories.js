@@ -105,4 +105,32 @@ router.post('/:id/reject', auth, requireAdmin, async (req, res) => {
     }
 });
 
+// PUT /api/categories/:id - update category (admin only)
+router.put('/:id', auth, requireAdmin, async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name is required' });
+
+        const category = await Category.findById(req.params.id);
+        if (!category) return res.status(404).json({ error: 'Category not found' });
+
+        const slug = slugify(name, { lower: true, strict: true });
+
+        // Check if new slug exists (excluding current category)
+        const existing = await Category.findOne({ slug, _id: { $ne: req.params.id } });
+        if (existing) {
+            return res.status(400).json({ error: 'Category with this name already exists' });
+        }
+
+        category.name = name;
+        category.slug = slug;
+        await category.save();
+
+        res.json({ message: 'Category updated', category });
+    } catch (err) {
+        console.error('Update category error:', err.message);
+        res.status(500).json({ error: 'Failed to update category' });
+    }
+});
+
 module.exports = router;
