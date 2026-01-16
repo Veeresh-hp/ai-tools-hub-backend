@@ -140,10 +140,65 @@ router.get('/pending', auth, requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/tools/my-submissions - get tools submitted by the current user
+router.get('/my-submissions', auth, async (req, res) => {
+  try {
+    const tools = await Tool.find({ submittedBy: req.user._id })
+      .select('name shortDescription status createdAt url snapshotUrl category pricing')
+      .sort({ createdAt: -1 });
+      
+    res.json({ tools });
+  } catch (err) {
+    console.error('Get my submissions error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch your submissions' });
+  }
+});
+
+// GET /api/tools/check-duplicate - check if tool exists by URL
+router.get('/check-duplicate', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    const existingTool = await Tool.findOne({ url: url.trim() });
+    
+    if (existingTool) {
+       return res.json({ exists: true, tool: existingTool });
+    }
+    
+    res.json({ exists: false });
+  } catch (err) {
+    console.error('Check duplicate error:', err.message);
+    res.status(500).json({ error: 'Failed to check duplicate' });
+  }
+});
+
 // POST /api/tools/submit - submit a new tool
 router.post('/submit', async (req, res) => {
   try {
     const { name, shortDescription, description, url, category, pricing, snapshotUrl, hashtags } = req.body;
+
+    // Optional: Determine submitter if logged in
+    let submittedBy = null;
+    const authHeader = req.headers.authorization;
+    console.log('📝 Submission attempt. Auth Header:', authHeader ? 'Present' : 'Missing');
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        if (token) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                submittedBy = decoded.userId;
+                console.log('✅ Linked submission to user:', submittedBy);
+            } catch (e) {
+                console.warn('⚠️ Invalid token during submission link attempt:', e.message);
+                // Continue as anonymous if token is invalid
+            }
+        }
+    } else {
+        console.log('ℹ️ Anonymous submission (no valid auth header)');
+    }
 
     // Check for duplicates (Name or URL)
     const existingTool = await Tool.findOne({
@@ -171,7 +226,8 @@ router.post('/submit', async (req, res) => {
       hashtags: Array.isArray(hashtags)
         ? hashtags.map(tag => tag.trim())
         : (hashtags ? hashtags.split(',').map(tag => tag.trim()) : []),
-      status: 'pending'
+      status: 'pending',
+      submittedBy: submittedBy
     });
 
     await newTool.save();
