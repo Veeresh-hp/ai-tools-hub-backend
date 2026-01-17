@@ -144,7 +144,7 @@ router.get('/pending', auth, requireAdmin, async (req, res) => {
 router.get('/my-submissions', auth, async (req, res) => {
   try {
     const tools = await Tool.find({ submittedBy: req.user._id })
-      .select('name shortDescription status createdAt url snapshotUrl category pricing')
+      .select('name shortDescription description status createdAt approvedAt url snapshotUrl category pricing hashtags')
       .sort({ createdAt: -1 });
       
     res.json({ tools });
