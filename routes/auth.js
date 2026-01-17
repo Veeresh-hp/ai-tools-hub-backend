@@ -362,4 +362,74 @@ router.get('/favorites', async (req, res) => {
   }
 });
 
+// --- CHANGE PASSWORD ---
+router.post('/change-password', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    const token = authHeader.split(' ')[1];
+    
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new passwords are required' });
+    }
+
+    const user = await User.findById(decoded.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Google-only users don't have a password
+    if (!user.password) {
+      return res.status(400).json({ error: 'You are logged in via Google. You cannot change password.' });
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Incorrect current password' });
+    }
+
+    // Update password (pre-save hook will hash it)
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Change password error:', error.message);
+    res.status(500).json({ error: 'Server error updating password' });
+  }
+});
+
+// --- DELETE ACCOUNT ---
+router.delete('/delete-account', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    const token = authHeader.split(' ')[1];
+    
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    await User.findByIdAndDelete(decoded.userId);
+    
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error.message);
+    res.status(500).json({ error: 'Server error deleting account' });
+  }
+});
+
 module.exports = router;
