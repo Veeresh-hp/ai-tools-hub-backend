@@ -17,6 +17,8 @@ const toolSchema = new mongoose.Schema({
   approvedAt: {
     type: Date
   },
+  rating: { type: Number, default: 0 },
+  reviewCount: { type: Number, default: 0 },
   isAiToolsChoice: {
     type: Boolean,
     default: false
