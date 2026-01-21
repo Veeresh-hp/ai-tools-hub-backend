@@ -124,6 +124,7 @@ app.use('/api/tools', toolRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/reviews', require('./routes/reviews'));
+app.use('/api/stacks', require('./routes/stacks'));
 app.use('/api/articles', require('./routes/articles'));
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/categories', categoryRoutes);

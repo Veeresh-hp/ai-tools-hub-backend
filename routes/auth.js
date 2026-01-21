@@ -68,6 +68,10 @@ router.post('/login', async (req, res) => {
     if (!user) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
+
+    if (user.isBanned) {
+        return res.status(403).json({ error: 'Your account has been banned. Please contact support.' });
+    }
     
     // Prevent Google users from logging in with a password
     if (!user.password) {
@@ -275,6 +279,10 @@ router.post('/google-login', async (req, res) => {
         sendEmail(emailTemplates.welcome(user.email, user.username))
           .then(() => console.log('✅ Welcome email sent on first Google link:', user.email))
           .catch(e => console.error('❌ Failed sending Google link welcome email to', user.email, ':', e.message));
+      }
+      
+      if (user.isBanned) {
+        return res.status(403).json({ error: 'Your account has been banned.' });
       }
     } else {
       // If the user doesn't exist, create a new one

@@ -38,6 +38,10 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  isBanned: {
+    type: Boolean,
+    default: false
+  }
 }, { timestamps: true });
 
 // Hash password before saving, but only if it exists and has been modified
