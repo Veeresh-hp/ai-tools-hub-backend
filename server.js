@@ -129,6 +129,7 @@ app.use('/api/articles', require('./routes/articles'));
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reports', require('./routes/reports'));
 
 // Health check
 app.get('/', (req, res) => {

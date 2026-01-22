@@ -12,8 +12,12 @@ const auth = async (req, res, next) => {
     req.user = user;
     next();
   } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      // Token expired is a normal event for refresh flow, no need to error log
+      return res.status(401).json({ error: 'Token expired' });
+    }
     console.error('Auth middleware error:', err.message);
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ error: 'Invalid token' });
   }
 };
 
